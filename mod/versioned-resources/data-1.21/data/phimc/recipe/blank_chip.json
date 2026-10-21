@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "G": { "item": "minecraft:gold_nugget" },
+    "I": { "item": "minecraft:iron_ingot" },
+    "R": { "item": "minecraft:redstone" }
+  },
+  "pattern": [
+    "IRI",
+    " I ",
+    " G "
+  ],
+  "result": {
+    "count": 1,
+    "id": "phimc:blank_chip"
+  }
+}

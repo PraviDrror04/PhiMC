@@ -1,0 +1,28 @@
+# 构建产物
+build/
+.gradle/
+out/
+*/build/
+*/.gradle/
+mod/versions/*/build/
+mod/dist/
+mod/build/
+mod/.gradle/
+
+# 安装器产物与测试目录（体积大 / 含本地环境）
+setup/*.exe
+setup/*.old.exe
+setup/iso*/
+setup/mctest*/
+setup/payload/
+*.log
+
+# 本地素材与临时
+big song/
+fixtures/*/audio.*
+fixtures/out/
+tools/**/__pycache__/
+**/*.class
+.idea/
+*.iml
+.vscode/

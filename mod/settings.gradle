@@ -1,0 +1,44 @@
+// PhiMC —— 单源码 + Stonecutter 多版本（1.20 ~ 1.21.11 全系）
+//
+// 为什么用 Stonecutter（方案 A，而不是每个版本一个子项目）：
+//   * 一个 jar 要覆盖 3 个 MC 版本起（现为 19 个：1.20 ~ 1.21.11），core/ 与 98% 的 mod 代码完全共用；
+//   * 版本差异集中在「注册/组件/战利品/渲染」这几十处，用 //? if 条件注释就地标注，
+//     比复制 3 份各有 200KB 的源码（方案 B）可维护得多；
+//   * 多版本（>=3）按用户给的判据用 A。
+//
+// 工具链要求：Stonecutter 0.9.8 需要 Gradle 9（C:\dsh-tools\gradle-9.8.2）
+// 且 fabric-loom 1.19.2 需要 JDK 25（C:\dsh-tools\jdk25）；编译目标由各 versions/<ver>
+// 的 mod.java_dep 决定（1.20.1 → 17，1.21.x → 21）。
+//
+// 真源：src/main/java 与 src/main/resources 保存的是「1.21.11 状态」（vcsVersion = 1.21.11）：
+// 其它版本的差异用 //? if >=... / <=... 标注，语法见
+// https://stonecutter.kikugie.dev/wiki/v2/guides/start/comment-overview
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.kikugie.dev/releases' }
+        mavenCentral()
+    }
+}
+
+plugins {
+    id 'dev.kikugie.stonecutter' version '0.9.8'
+}
+
+stonecutter {
+    // 用 Groovy DSL（本仓库原有构建脚本都是 Groovy，不引入 .kts）
+    kotlinController = false
+    centralScript = 'build.gradle'
+
+    create(getRootProject()) {
+        // 节点名 = versions/<节点名> = 目标 MC 版本（1.20 / 1.20.1 … 1.21.11 全系）
+        versions '1.20', '1.20.1', '1.20.2', '1.20.3', '1.20.4', '1.20.5', '1.20.6',
+                '1.21', '1.21.1', '1.21.2', '1.21.3', '1.21.4', '1.21.5',
+                '1.21.6', '1.21.7', '1.21.8', '1.21.9', '1.21.10', '1.21.11'
+        // src/ 的可见代码状态跟着 1.21.11 走（新代码都按 1.21.11 写）；其它版本靠预处理生成
+        vcsVersion = '1.21.11'
+    }
+}
+
+rootProject.name = 'phimc'

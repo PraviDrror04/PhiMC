@@ -1,0 +1,20 @@
+{
+  "item.phimc.chart_player": "谱面播放器",
+  "item.phimc.tablet": "平板",
+  "item.phimc.blank_chip": "空芯片",
+  "item.phimc.chart_chip": "谱面芯片",
+  "item.phimc.big_fish": "大肥鱼",
+  "item.phimc.phira": "Phira",
+  "itemGroup.phimc": "PhiMC",
+  "key.phimc.select": "打开选曲",
+  "key.category.phimc.main": "PhiMC",
+  "category.phimc": "PhiMC",
+  "tooltip.phimc.blank_chip.hint": "在平板曲库里对已解锁谱面点「拷芯片」",
+  "tooltip.phimc.chart_chip.empty": "未载入谱面",
+  "tooltip.phimc.chart_chip.chart": "谱面：%s",
+  "tooltip.phimc.chart_chip.hint": "右键解锁（芯片不消耗）",
+  "message.phimc.chip.unlocked": "已解锁 %s",
+  "message.phimc.chip.already": "已解锁（此前就拥有）：%s",
+  "message.phimc.chip.empty": "这张芯片还没有载入谱面",
+  "message.phimc.chip.no_profile": "存档还没准备好，稍后再试"
+}
