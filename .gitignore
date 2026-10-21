@@ -26,3 +26,9 @@ tools/**/__pycache__/
 .idea/
 *.iml
 .vscode/
+# 版权素材：官方/第三方谱面与音频不入库（仅本地测试）
+fixtures/
+*.pez
+*.ogg
+*.mp3
+setup/payload/
