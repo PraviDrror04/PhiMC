@@ -1,0 +1,122 @@
+// PhiMC —— Stonecutter 中心构建脚本（每个版本节点各跑一遍）
+//
+// 节点名 = 目标 MC 版本（1.20.1 / 1.21.1 / 1.21.11），每个节点从
+//   versions/<版本>/gradle.properties  取 deps.*（minecraft / yarn / loader / fabric-api）
+//   src/main/java + src/main/resources 取共享源码（由 Stonecutter 按 //? 条件展开成该版本）
+//
+// 产物：mod/build/libs/phimc-<MC 版本>.jar（外加 -sources.jar）
+plugins {
+    id 'fabric-loom' version '1.19.2'
+    id 'maven-publish'
+}
+
+def mcVersion = sc.current.version
+def repoRoot = rootProject.projectDir.parentFile          // 仓库根（含 core/ 与 lib/）
+// 1.20 ~ 1.20.4 跑 Java 17，1.20.5 起是 Java 21
+def javaLevel = sc.current.parsed.matches('<1.20.5') ? JavaVersion.VERSION_17 : JavaVersion.VERSION_21
+
+// 归档名就带 MC 版本：phimc-1.21.1.jar / phimc-1.20.1.jar / phimc-1.21.11.jar
+version = mcVersion
+group = property('maven_group')
+base {
+    archivesName = property('archives_base_name')
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${property('deps.minecraft')}"
+    mappings "net.fabricmc:yarn:${property('deps.yarn')}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${property('deps.loader')}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${property('deps.fabric_api')}"
+
+    // RPE（.pez）谱面包里的音乐是 <id>.mp3，JavaSound 自带解不了；
+    // 用纯 Java 的 JLayer（LGPL）解成 PCM，交回 WavSource（core/audio/Mp3ToWav.java）。
+    // 离线构建：jar 就放在仓库根的 lib/ 里，不引入 mavenCentral 依赖。
+    implementation files(new File(repoRoot, 'lib/jlayer-1.0.1.4.jar'))
+
+    // Phira 在线谱面库的曲绘是 WebP（2048×1080，实测全是 VP8 有损），JDK 的 ImageIO 和
+    // Minecraft 用的 stb_image 都不认 WebP。用纯 Java 的 JWebP（MPL-2.0，无 native、无传递依赖）
+    // 解成 BufferedImage 再转 PNG（见 CoverCodec）。同样离线：jar 放仓库根 lib/。
+    implementation files(new File(repoRoot, 'lib/webp-0.2.0.jar'))
+}
+
+// core 是纯 Java 引擎（零 MC 依赖），与 mod 共用一份源码，避免复制粘贴
+sourceSets {
+    main {
+        java {
+            srcDir new File(repoRoot, 'core/src/main/java')
+        }
+    }
+}
+
+// ---- 按版本挑「数据/资源目录」（JSON 不能用 //? 条件注释）----
+// 三个数据格式代 + 一个物品模型定义代，实测边界（对照各版本原版 jar）：
+//   * 1.20.5 起 recipe 的 result 字段名 item → id
+//   * 1.21   起数据目录 recipes→recipe、loot_tables→loot_table
+//   * 1.21.4 起物品模型必须写在 assets/<ns>/items/<id>.json（模型定义），没有它物品没有模型
+def dataEra = sc.current.parsed.matches('<1.20.5') ? 'data-1.20.4'
+        : sc.current.parsed.matches('<1.21') ? 'data-1.20.5'
+        : 'data-1.21'
+def dataEraDir = new File(repoRoot, "mod/versioned-resources/${dataEra}")
+if (!dataEraDir.isDirectory()) throw new GradleException("缺少版本资源目录：${dataEraDir}")
+sourceSets.main.resources.srcDir(dataEraDir)
+
+if (sc.current.parsed.matches('>=1.21.4')) {
+    def modelEraDir = new File(repoRoot, 'mod/versioned-resources/assets-1.21.4')
+    if (!modelEraDir.isDirectory()) throw new GradleException("缺少版本资源目录：${modelEraDir}")
+    sourceSets.main.resources.srcDir(modelEraDir)
+}
+
+def modVersion = property('mod_version').toString()
+def mcDep = property('mod.mc_dep').toString()
+def javaDep = property('mod.java_dep').toString()
+
+processResources {
+    inputs.property "mod_version", modVersion
+    inputs.property "mc_dep", mcDep
+    inputs.property "java_dep", javaDep
+    filesMatching("fabric.mod.json") {
+        expand(
+            "mod_version": modVersion,
+            "mc_dep": mcDep,
+            "java_dep": javaDep
+        )
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = javaLevel.majorVersion.toInteger()
+    it.options.encoding = "UTF-8"
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = javaLevel
+    targetCompatibility = javaLevel
+}
+
+jar {
+    from(new File(repoRoot, 'LICENSE')) {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+    // JLayer 的类直接摊进 mod jar。Fabric 只会从 mods/ 加载这一个 jar，
+    // 摊平（而不是 include 成嵌套 jar）少一层 loader 依赖，也不会出现两份 javazoom 类。
+    from(zipTree(new File(repoRoot, 'lib/jlayer-1.0.1.4.jar'))) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+        exclude 'META-INF/maven/**'
+    }
+    // JWebP（WebP 解码）同理摊平；javafx 那部分用不到，也一并摊平（不加载就不会解析）
+    from(zipTree(new File(repoRoot, 'lib/webp-0.2.0.jar'))) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+        exclude 'META-INF/maven/**'
+    }
+    // MPL-2.0 要求随分发保留许可证与来源说明
+    from(new File(repoRoot, 'lib/webp-LICENSE.txt')) {
+        rename { 'LICENSE_jwebp' }
+    }
+}

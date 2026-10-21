@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "phimc",
+  "version": "${mod_version}",
+  "name": "PhiMC",
+  "description": "在 Minecraft 里玩 Phigros 谱面。谱面与音频不进 jar，由玩家放进 config/phimc/songs/。",
+  "authors": ["dsh"],
+  "license": "MIT",
+  "icon": "assets/phimc/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.dsh.phimc.client.PhiMCClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "${mc_dep}",
+    "java": "${java_dep}",
+    "fabric-api": "*"
+  }
+}

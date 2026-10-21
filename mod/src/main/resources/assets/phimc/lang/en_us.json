@@ -1,0 +1,20 @@
+{
+  "item.phimc.chart_player": "Chart Player",
+  "item.phimc.tablet": "Tablet",
+  "item.phimc.blank_chip": "Blank Chip",
+  "item.phimc.chart_chip": "Chart Chip",
+  "item.phimc.big_fish": "Big Fish",
+  "item.phimc.phira": "Phira",
+  "itemGroup.phimc": "PhiMC",
+  "key.phimc.select": "Open Song Select",
+  "key.category.phimc.main": "PhiMC",
+  "category.phimc": "PhiMC",
+  "tooltip.phimc.blank_chip.hint": "Use 'Copy to chip' on an unlocked chart in the tablet library",
+  "tooltip.phimc.chart_chip.empty": "No chart loaded",
+  "tooltip.phimc.chart_chip.chart": "Chart: %s",
+  "tooltip.phimc.chart_chip.hint": "Right-click to unlock (chip is not consumed)",
+  "message.phimc.chip.unlocked": "Unlocked %s",
+  "message.phimc.chip.already": "Already unlocked: %s",
+  "message.phimc.chip.empty": "This chip has no chart loaded",
+  "message.phimc.chip.no_profile": "Profile is not ready yet, try again"
+}

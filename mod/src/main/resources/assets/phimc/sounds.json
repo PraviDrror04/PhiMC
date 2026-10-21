@@ -1,0 +1,17 @@
+{
+  "hit_click": {
+    "sounds": [
+      "phimc:hit/click"
+    ]
+  },
+  "hit_drag": {
+    "sounds": [
+      "phimc:hit/drag"
+    ]
+  },
+  "hit_flick": {
+    "sounds": [
+      "phimc:hit/flick"
+    ]
+  }
+}
