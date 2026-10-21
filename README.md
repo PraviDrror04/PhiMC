@@ -282,7 +282,14 @@ lib/         第三方 jar（gson / JLayer / JWebP）
 
 ### 行为参考
 
-本项目的判定语义、谱面格式解析、渲染参数参考了 [Phira](https://github.com/TeamFlos/phira)（GPL-3.0）的可观察行为，按规格重写，未复制其源代码。
+PhiMC 的判定窗口、缓动函数、谱面格式语义、渲染比例等参数，
+参照开源音游 [Phira](https://github.com/TeamFlos/phira)（GPL-3.0）的实现整理而来。
+
+代码本身是为 Minecraft / Java 环境独立编写的：渲染走 Minecraft 的绘制管线，
+音频走 JavaSound / JLayer，输入走 GLFW，与 Phira（wgpu + macroquad + tokio）架构完全不同，
+未复制其源代码。
+
+为表达对原项目的尊重，本项目仍采用 **GPL-3.0** 开源。
 
 ### 内置谱面
 
