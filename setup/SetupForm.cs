@@ -59,151 +59,511 @@ namespace PhiMCSetup
         private const string ModJarPrefix = ModId + "-";
         private const string ModJarSuffix = ".jar";
 
+        // ==================================================================
+        // 配色 / 字体：浅色系统风 —— 白卡片 + 一个强调色（蓝），
+        // 红/绿只用来表达「失败 / 成功」，不做装饰。
+        // ==================================================================
+        private static readonly Color C_BG = Color.FromArgb(245, 246, 248);      // 窗体底
+        private static readonly Color C_CARD = Color.White;                      // 分组卡片
+        private static readonly Color C_TEXT = Color.FromArgb(31, 35, 40);       // 主文字
+        private static readonly Color C_MUTED = Color.FromArgb(110, 118, 129);   // 说明小字
+        private static readonly Color C_BORDER = Color.FromArgb(222, 226, 232);  // 描边
+        private static readonly Color C_ACCENT = Color.FromArgb(37, 99, 235);    // 唯一强调色
+        private static readonly Color C_OK = Color.FromArgb(21, 128, 61);        // 成功
+        private static readonly Color C_ERR = Color.FromArgb(185, 28, 28);       // 失败
+        private const string UiFamily = "Microsoft YaHei UI";
+        private const string MonoFamily = "Consolas";
+
+        // ==================================================================
+        // 控件
+        // ==================================================================
         private TextBox mcDirBox;
-        private ComboBox versionBox;
+        /** 实例列表：实例名 / MC 版本 / 加载器 / 是否已装 PhiMC（原来的下拉框升级成列表）。 */
+        private ListView instanceList;
         private CheckBox isoBox;
-        private TextBox log;
+        private CheckBox apiBox;
+        private CheckBox overwriteBox;
+        private CheckBox deleteOldBox;
+        private RichTextBox log;
         private Label dropHint;
         private Label statusLabel;
         private Label rootLabel;
+        private Label respackHint;
+        private Label resultLabel;
+        private Label progressLabel;
+        private ProgressBar progressBar;
+        private Button installBtn;
+        private Button respackBtn;
+        private Button songsBtn;
+        private Button modsBtn;
+        private Button diagBtn;
+        private Button builtinBtn;
+        private Button refreshBtn;
+        private Button fabricBtn;
+
+        /** 实例目录名，和 instanceList 的行一一对应（行 = 安装目标）。 */
+        private readonly System.Collections.Generic.List<string> instNames =
+            new System.Collections.Generic.List<string>();
+        /** 日志纯文本（RichTextBox.Text 的分行符不是 \r\n，导出文件用这个）。 */
+        private readonly System.Text.StringBuilder logText = new System.Text.StringBuilder();
+        /** 安装进行中：挡住 DoEvents 造成的重入。 */
+        private bool busy;
+        /** RefreshVersions 选中的行号（窗体真正显示后再应用一次：ListViewItem.Selected 在句柄建立前不一定生效）。 */
+        private int wantedIndex = -1;
 
         public SetupForm()
         {
             Text = "PhiMC 安装器";
-            Width = 780;
-            Height = 660;
+            ClientSize = new Size(920, 840);
+            MinimumSize = new Size(900, 800);
             StartPosition = FormStartPosition.CenterScreen;
             AllowDrop = true;
-            BackColor = Color.FromArgb(24, 24, 32);
-            ForeColor = Color.Gainsboro;
-            Font = new Font("Microsoft YaHei UI", 9F);
+            BackColor = C_BG;
+            ForeColor = C_TEXT;
+            Font = new Font(UiFamily, 9F);
+            DoubleBuffered = true;
+
+            // ---- 根布局：一行一个区块，固定高 + 一个「日志」百分比我伸缩。
+            //      行高按各组内容的实际需要算（内容高 + GroupBox 标题/内边距），
+            //      窗口缩到 MinimumSize 也只是日志变矮，不会有控件互相压住 ----
+            TableLayoutPanel root = new TableLayoutPanel();
+            root.Dock = DockStyle.Fill;
+            root.ColumnCount = 1;
+            root.RowCount = 11;
+            root.BackColor = C_BG;
+            root.Padding = new Padding(18, 12, 18, 12);
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));   // 0 标题区
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 128F));  // 1 游戏目录（4 行内容）
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 182F));  // 2 实例列表（工具栏 + 表头 + 4 行）
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112F));  // 3 安装选项（3 行 × 26）
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));   // 4 主按钮行
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));   // 5 资源包说明
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));   // 6 拖入区
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 18F));   // 7 进度条
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));   // 8 进度文字 + 结果横幅
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));   // 9 日志（唯一伸缩行）
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));   // 10 底部
+            Controls.Add(root);
+
+            // ---------------- 0. 标题区 ----------------
+            Panel header = new Panel();
+            header.Dock = DockStyle.Fill;
+            header.BackColor = C_BG;
+            root.Controls.Add(header, 0, 0);
 
             Label title = new Label();
-            title.Text = "PhiMC  —  在 Minecraft 里玩 Phigros 谱面";
-            title.Font = new Font("Microsoft YaHei UI", 13F, FontStyle.Bold);
-            title.ForeColor = Color.White;
-            title.SetBounds(20, 14, 720, 30);
-            Controls.Add(title);
+            title.Text = "PhiMC 安装器";
+            title.Font = new Font(UiFamily, 15F, FontStyle.Bold);
+            title.ForeColor = C_TEXT;
+            title.AutoSize = false;
+            title.SetBounds(0, 0, 600, 26);
+            title.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            header.Controls.Add(title);
 
-            Label mcLabel = new Label();
-            mcLabel.Text = "游戏目录（.minecraft）：";
-            mcLabel.SetBounds(20, 54, 200, 22);
-            Controls.Add(mcLabel);
+            Label subtitle = new Label();
+            subtitle.Text = "在 Minecraft 里玩 Phigros 谱面 · 自带 " + Variants.Length
+                + " 个 MC 版本（" + Variants[0].Mc + " ~ " + Variants[Variants.Length - 1].Mc
+                + "）的 mod + Fabric API";
+            subtitle.Font = new Font(UiFamily, 9F);
+            subtitle.ForeColor = C_MUTED;
+            subtitle.AutoSize = false;
+            subtitle.AutoEllipsis = true;
+            subtitle.SetBounds(0, 25, 600, 17);
+            subtitle.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            header.Controls.Add(subtitle);
+
+            Panel headerLine = new Panel();
+            headerLine.BackColor = C_BORDER;
+            headerLine.Dock = DockStyle.Bottom;
+            headerLine.Height = 1;
+            header.Controls.Add(headerLine);
+
+            // ---------------- 1. 游戏目录 ----------------
+            GroupBox dirGroup = MakeGroup("① 游戏目录");
+            root.Controls.Add(dirGroup, 0, 1);
+
+            TableLayoutPanel dirT = new TableLayoutPanel();
+            dirT.Dock = DockStyle.Fill;
+            dirT.ColumnCount = 3;
+            dirT.RowCount = 4;
+            dirT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104F));
+            dirT.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            dirT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92F));
+            dirT.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            dirT.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
+            dirT.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            dirT.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            dirGroup.Controls.Add(dirT);
+
+            dirT.Controls.Add(MakeLabel(".minecraft 目录", 9F, FontStyle.Regular, C_TEXT,
+                ContentAlignment.MiddleLeft), 0, 0);
 
             mcDirBox = new TextBox();
-            mcDirBox.SetBounds(20, 76, 600, 26);
+            mcDirBox.Dock = DockStyle.Fill;
+            mcDirBox.Font = new Font(UiFamily, 9F);
             mcDirBox.Text = DetectMinecraft();
-            Controls.Add(mcDirBox);
+            dirT.Controls.Add(mcDirBox, 1, 0);
 
-            Button browse = new Button();
-            browse.Text = "浏览…";
-            browse.SetBounds(630, 75, 110, 28);
+            Button browse = MakeButton("浏览…", false);
+            browse.Dock = DockStyle.Fill;
+            browse.Margin = new Padding(6, 2, 0, 2);
             browse.Click += delegate { BrowseMinecraft(); };
-            Controls.Add(browse);
-
-            Label verLabel = new Label();
-            verLabel.Text = "游戏版本：";
-            verLabel.SetBounds(20, 112, 80, 22);
-            Controls.Add(verLabel);
-
-            versionBox = new ComboBox();
-            versionBox.SetBounds(100, 110, 190, 26);
-            versionBox.DropDownStyle = ComboBoxStyle.DropDownList;
-            versionBox.SelectedIndexChanged += delegate { ApplyLayoutForVersion(); };
-            Controls.Add(versionBox);
-
-            Button refresh = new Button();
-            refresh.Text = "刷新";
-            refresh.SetBounds(298, 109, 70, 28);
-            refresh.Click += delegate { RefreshVersions(true); };
-            Controls.Add(refresh);
-
-            Button fabricBtn = new Button();
-            fabricBtn.Text = "装 Fabric";
-            fabricBtn.SetBounds(372, 109, 90, 28);
-            fabricBtn.Click += delegate { InstallFabric(); };
-            Controls.Add(fabricBtn);
+            dirT.Controls.Add(browse, 2, 0);
 
             isoBox = new CheckBox();
-            isoBox.Text = "版本隔离（强制）";
-            isoBox.SetBounds(468, 112, 130, 24);
+            isoBox.Text = "版本隔离（强制启用：mod / config 一律装到 versions\\<实例>\\ 下）";
+            isoBox.Font = new Font(UiFamily, 9F);
+            isoBox.ForeColor = C_MUTED;
             isoBox.Checked = true;
             isoBox.Enabled = false;
-            Controls.Add(isoBox);
+            isoBox.AutoSize = true;
+            isoBox.Margin = new Padding(0);
+            dirT.Controls.Add(isoBox, 0, 1);
+            dirT.SetColumnSpan(isoBox, 3);
 
             rootLabel = new Label();
-            rootLabel.SetBounds(20, 144, 720, 22);
-            rootLabel.ForeColor = Color.LightSkyBlue;
-            Controls.Add(rootLabel);
+            rootLabel.Font = new Font(UiFamily, 9F);
+            rootLabel.ForeColor = C_ACCENT;
+            rootLabel.AutoEllipsis = true;
+            rootLabel.TextAlign = ContentAlignment.MiddleLeft;
+            rootLabel.Dock = DockStyle.Fill;
+            rootLabel.Margin = new Padding(0);
+            dirT.Controls.Add(rootLabel, 0, 2);
+            dirT.SetColumnSpan(rootLabel, 3);
 
             statusLabel = new Label();
-            statusLabel.SetBounds(20, 166, 720, 22);
-            statusLabel.ForeColor = Color.Gray;
-            Controls.Add(statusLabel);
+            statusLabel.Font = new Font(UiFamily, 9F);
+            statusLabel.ForeColor = C_MUTED;
+            statusLabel.AutoEllipsis = true;
+            statusLabel.TextAlign = ContentAlignment.MiddleLeft;
+            statusLabel.Dock = DockStyle.Fill;
+            statusLabel.Margin = new Padding(0);
+            dirT.Controls.Add(statusLabel, 0, 3);
+            dirT.SetColumnSpan(statusLabel, 3);
 
-            Button install = new Button();
-            install.Text = "① 一键安装 mod + 建好文件夹";
-            install.SetBounds(20, 194, 300, 42);
-            install.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
-            install.Click += delegate { FullInstall(); };
-            Controls.Add(install);
+            // ---------------- 2. 实例列表（三列 + 是否已装 PhiMC） ----------------
+            GroupBox instGroup = MakeGroup("② 选择实例（点一行 = 安装目标）");
+            root.Controls.Add(instGroup, 0, 2);
 
-            Button openSongs = new Button();
-            openSongs.Text = "打开曲目文件夹";
-            openSongs.SetBounds(332, 194, 160, 42);
-            openSongs.Click += delegate { OpenFolder(SongsDir()); };
-            Controls.Add(openSongs);
+            TableLayoutPanel instT = new TableLayoutPanel();
+            instT.Dock = DockStyle.Fill;
+            instT.ColumnCount = 4;
+            instT.RowCount = 2;
+            instT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76F));   // 刷新
+            instT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96F));   // 装 Fabric
+            instT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150F));  // 提示
+            instT.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            instT.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+            instT.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            instGroup.Controls.Add(instT);
 
-            Button openMods = new Button();
-            openMods.Text = "打开 mods 文件夹";
-            openMods.SetBounds(504, 194, 160, 42);
-            openMods.Click += delegate { OpenFolder(ModsDir()); };
-            Controls.Add(openMods);
+            refreshBtn = MakeButton("↻ 刷新", false);
+            refreshBtn.Dock = DockStyle.Fill;
+            refreshBtn.Margin = new Padding(0, 0, 6, 4);
+            refreshBtn.Click += delegate { RefreshVersions(true); };
+            instT.Controls.Add(refreshBtn, 0, 0);
 
-            Button diag = new Button();
-            diag.Text = "③ 检查安装（诊断）";
-            diag.SetBounds(20, 244, 180, 28);
-            diag.Click += delegate { Diagnose(); };
-            Controls.Add(diag);
+            fabricBtn = MakeButton("装 Fabric", false);
+            fabricBtn.Dock = DockStyle.Fill;
+            fabricBtn.Margin = new Padding(0, 0, 6, 4);
+            fabricBtn.Click += delegate { InstallFabric(); };
+            instT.Controls.Add(fabricBtn, 1, 0);
 
-            Button songsBtn = new Button();
-            songsBtn.Text = "④ 只投放内置谱面";
-            songsBtn.SetBounds(208, 244, 180, 28);
-            songsBtn.Click += delegate
-            {
-                InstallBuiltinSongs();
-                Print("谱面目录：" + SongsDir());
-                Diagnose();
-            };
-            Controls.Add(songsBtn);
+            instT.Controls.Add(MakeLabel("每行 = 一个启动器实例", 8.5F, FontStyle.Regular, C_MUTED,
+                ContentAlignment.MiddleLeft), 2, 0);
 
+            instanceList = new ListView();
+            instanceList.Dock = DockStyle.Fill;
+            instanceList.View = View.Details;
+            instanceList.FullRowSelect = true;
+            instanceList.MultiSelect = false;
+            instanceList.HideSelection = false;
+            instanceList.HeaderStyle = ColumnHeaderStyle.Nonclickable;
+            instanceList.BorderStyle = BorderStyle.FixedSingle;
+            instanceList.BackColor = C_CARD;
+            instanceList.ForeColor = C_TEXT;
+            instanceList.Font = new Font(UiFamily, 9F);
+            instanceList.Margin = new Padding(0);
+            instanceList.Columns.Add("实例目录", 320, HorizontalAlignment.Left);
+            instanceList.Columns.Add("MC 版本", 90, HorizontalAlignment.Left);
+            instanceList.Columns.Add("加载器", 130, HorizontalAlignment.Left);
+            instanceList.Columns.Add("PhiMC", 100, HorizontalAlignment.Left);
+            instanceList.SelectedIndexChanged += delegate { ApplyLayoutForVersion(); };
+            instanceList.Resize += delegate { FitInstanceColumns(); };
+            instT.Controls.Add(instanceList, 0, 1);
+            instT.SetColumnSpan(instanceList, 4);
+
+            // ---------------- 3. 安装选项（每项后面一句小字说明） ----------------
+            GroupBox optGroup = MakeGroup("③ 安装选项");
+            root.Controls.Add(optGroup, 0, 3);
+
+            TableLayoutPanel optT = new TableLayoutPanel();
+            optT.Dock = DockStyle.Fill;
+            optT.ColumnCount = 2;
+            optT.RowCount = 3;
+            optT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250F));
+            optT.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
+            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
+            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
+            optGroup.Controls.Add(optT);
+
+            apiBox = MakeCheck("装 Fabric API", true);
+            optT.Controls.Add(apiBox, 0, 0);
+            optT.Controls.Add(MakeLabel("mod 依赖它；没有 Fabric API 游戏里什么都不会加载",
+                8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft), 1, 0);
+
+            overwriteBox = MakeCheck("覆盖已存在的 jar", true);
+            optT.Controls.Add(overwriteBox, 0, 1);
+            optT.Controls.Add(MakeLabel("不勾选时：mods 里已有同名且大小一致的 jar 就跳过（不重写）",
+                8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft), 1, 1);
+
+            deleteOldBox = MakeCheck("删除其它版本的旧 PhiMC jar", true);
+            optT.Controls.Add(deleteOldBox, 0, 2);
+            optT.Controls.Add(MakeLabel("mods 里只能有一个 phimc-*.jar，多版本共存会两个都不加载",
+                8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft), 1, 2);
+
+            // ---------------- 4. 主按钮行 ----------------
+            TableLayoutPanel actT = new TableLayoutPanel();
+            actT.Dock = DockStyle.Fill;
+            actT.ColumnCount = 5;
+            actT.RowCount = 1;
+            actT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250F));
+            actT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168F));
+            actT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
+            actT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
+            actT.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            actT.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            root.Controls.Add(actT, 0, 4);
+
+            installBtn = MakeButton("立即安装 mod + 建好文件夹", true);
+            installBtn.Dock = DockStyle.Fill;
+            installBtn.Margin = new Padding(0, 2, 8, 2);
+            installBtn.Click += delegate { FullInstall(); };
+            actT.Controls.Add(installBtn, 0, 0);
+
+            respackBtn = MakeButton("打开资源包文件夹", false);
+            respackBtn.Dock = DockStyle.Fill;
+            respackBtn.Margin = new Padding(0, 2, 8, 2);
+            respackBtn.Click += delegate { OpenResPackFolder(); };
+            actT.Controls.Add(respackBtn, 1, 0);
+
+            songsBtn = MakeButton("打开曲目文件夹", false);
+            songsBtn.Dock = DockStyle.Fill;
+            songsBtn.Margin = new Padding(0, 2, 8, 2);
+            songsBtn.Click += delegate { OpenFolder(SongsDir()); };
+            actT.Controls.Add(songsBtn, 2, 0);
+
+            modsBtn = MakeButton("打开 mods 文件夹", false);
+            modsBtn.Dock = DockStyle.Fill;
+            modsBtn.Margin = new Padding(0, 2, 8, 2);
+            modsBtn.Click += delegate { OpenFolder(ModsDir()); };
+            actT.Controls.Add(modsBtn, 3, 0);
+
+            // ---------------- 5. 资源包文件夹说明 ----------------
+            respackHint = new Label();
+            respackHint.Text = "把材质包 .zip 放进这个文件夹，游戏内设置页即可选择";
+            respackHint.Font = new Font(UiFamily, 8.5F);
+            respackHint.ForeColor = C_MUTED;
+            respackHint.AutoEllipsis = true;
+            respackHint.TextAlign = ContentAlignment.MiddleLeft;
+            respackHint.Dock = DockStyle.Fill;
+            respackHint.Margin = new Padding(0);
+            root.Controls.Add(respackHint, 0, 5);
+
+            // ---------------- 6. 拖入区 ----------------
             dropHint = new Label();
-            dropHint.Text = "② 把谱面包（*.zip）拖到这里导入\r\n也可以拖一整个文件夹";
-            dropHint.SetBounds(20, 282, 720, 72);
+            dropHint.Text = "把谱面包（*.zip）拖到这里导入，也可以拖一整个文件夹";
+            dropHint.Font = new Font(UiFamily, 9F);
+            dropHint.Dock = DockStyle.Fill;
+            dropHint.Margin = new Padding(0);
             dropHint.TextAlign = ContentAlignment.MiddleCenter;
-            dropHint.BackColor = Color.FromArgb(40, 44, 56);
-            dropHint.ForeColor = Color.LightSkyBlue;
+            dropHint.BackColor = C_CARD;
+            dropHint.ForeColor = C_ACCENT;
             dropHint.BorderStyle = BorderStyle.FixedSingle;
             dropHint.AllowDrop = true;
             dropHint.DragEnter += OnDragEnter;
+            dropHint.DragLeave += delegate { dropHint.BackColor = C_CARD; };
             dropHint.DragDrop += OnDragDrop;
-            Controls.Add(dropHint);
+            root.Controls.Add(dropHint, 0, 6);
             DragEnter += OnDragEnter;
             DragDrop += OnDragDrop;
 
-            log = new TextBox();
-            log.Multiline = true;
-            log.ScrollBars = ScrollBars.Vertical;
+            // ---------------- 7. 进度条 ----------------
+            progressBar = new ProgressBar();
+            progressBar.Dock = DockStyle.Fill;
+            progressBar.Minimum = 0;
+            progressBar.Maximum = 100;
+            progressBar.Value = 0;
+            progressBar.Margin = new Padding(0, 3, 0, 3);
+            root.Controls.Add(progressBar, 0, 7);
+
+            // ---------------- 8. 进度文字 + 结果横幅（上下两行，不重叠） ----------------
+            Panel progPanel = new Panel();
+            progPanel.Dock = DockStyle.Fill;
+            progPanel.BackColor = C_BG;
+            root.Controls.Add(progPanel, 0, 8);
+
+            progressLabel = new Label();
+            progressLabel.Text = "等待安装";
+            progressLabel.Font = new Font(UiFamily, 8.5F);
+            progressLabel.ForeColor = C_MUTED;
+            progressLabel.AutoEllipsis = true;
+            progressLabel.SetBounds(0, 0, 420, 16);
+            progressLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            progPanel.Controls.Add(progressLabel);
+
+            resultLabel = new Label();
+            resultLabel.Text = "";
+            resultLabel.Font = new Font(UiFamily, 9F, FontStyle.Bold);
+            resultLabel.ForeColor = C_TEXT;
+            resultLabel.AutoEllipsis = true;
+            resultLabel.SetBounds(0, 16, 600, 18);
+            resultLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            progPanel.Controls.Add(resultLabel);
+
+            // ---------------- 9. 日志 ----------------
+            GroupBox logGroup = MakeGroup("日志");
+            root.Controls.Add(logGroup, 0, 9);
+
+            log = new RichTextBox();
+            log.Dock = DockStyle.Fill;
             log.ReadOnly = true;
-            log.SetBounds(20, 362, 720, 240);
-            log.BackColor = Color.FromArgb(16, 16, 22);
-            log.ForeColor = Color.LightGreen;
-            log.Font = new Font("Consolas", 9F);
-            Controls.Add(log);
+            log.BorderStyle = BorderStyle.None;
+            log.WordWrap = true;
+            log.DetectUrls = false;
+            log.ScrollBars = RichTextBoxScrollBars.Vertical;
+            log.BackColor = C_CARD;
+            log.ForeColor = C_TEXT;
+            log.Font = new Font(MonoFamily, 9F);
+            logGroup.Controls.Add(log);
+
+            // ---------------- 10. 底部 ----------------
+            TableLayoutPanel footT = new TableLayoutPanel();
+            footT.Dock = DockStyle.Fill;
+            footT.ColumnCount = 4;
+            footT.RowCount = 1;
+            footT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170F));
+            footT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170F));
+            footT.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            footT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300F));
+            footT.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            root.Controls.Add(footT, 0, 10);
+
+            diagBtn = MakeButton("检查安装（诊断）", false);
+            diagBtn.Dock = DockStyle.Fill;
+            diagBtn.Margin = new Padding(0, 2, 8, 2);
+            diagBtn.Click += delegate { Diagnose(); SetProgress(progressBar.Value, "诊断完成（见下方日志）"); };
+            footT.Controls.Add(diagBtn, 0, 0);
+
+            builtinBtn = MakeButton("只投放内置谱面", false);
+            builtinBtn.Dock = DockStyle.Fill;
+            builtinBtn.Margin = new Padding(0, 2, 8, 2);
+            builtinBtn.Click += delegate
+            {
+                InstallBuiltinSongs();
+                Print("谱面目录：" + SongsDir());
+                SetProgress(100, "内置谱面已投放");
+                Diagnose();
+            };
+            footT.Controls.Add(builtinBtn, 1, 0);
+
+            Label supportLabel = MakeLabel("支持 " + Variants.Length + " 个版本：" + Variants[0].Mc + " ~ "
+                + Variants[Variants.Length - 1].Mc, 8.5F, FontStyle.Regular, C_MUTED,
+                ContentAlignment.MiddleRight);
+            footT.Controls.Add(supportLabel, 3, 0);
 
             LoadSettings();
             RefreshVersions(false);
-            Print("提示：先确认目录和版本，再点【①】。版本隔离的启动器（PCL2/HMCL）要把“版本隔离”勾上。");
+            UpdateResPackHint();
+            // 首帧布局定下来之后再算一次列宽；顺手把选中行坐实
+            //（构造期 ListView 还没有句柄，Items[].Selected 不一定真的选中）
+            Shown += delegate
+            {
+                if (SelectedVersion().Length == 0 && wantedIndex >= 0
+                    && wantedIndex < instanceList.Items.Count)
+                {
+                    instanceList.Items[wantedIndex].Selected = true;
+                    instanceList.Items[wantedIndex].Focused = true;
+                    instanceList.EnsureVisible(wantedIndex);
+                    ApplyLayoutForVersion();
+                }
+                FitInstanceColumns();
+            };
+            Print("提示：先确认目录和实例，再点【立即安装】。装完把材质包 .zip 丢进【打开资源包文件夹】里那个目录，进游戏设置页切换。");
+        }
+
+        // ==================================================================
+        // 控件工厂（统一字号 / 边距 / 描边，避免各处手写样式不一致）
+        // ==================================================================
+
+        private static Label MakeLabel(string text, float size, FontStyle style, Color color,
+            ContentAlignment align)
+        {
+            Label l = new Label();
+            l.Text = text;
+            l.Font = new Font(UiFamily, size, style);
+            l.ForeColor = color;
+            l.TextAlign = align;
+            l.AutoSize = false;
+            l.Dock = DockStyle.Fill;
+            l.Margin = new Padding(0);
+            l.AutoEllipsis = true;
+            return l;
+        }
+
+        private static GroupBox MakeGroup(string title)
+        {
+            GroupBox g = new GroupBox();
+            g.Text = "  " + title;
+            g.Font = new Font(UiFamily, 9F, FontStyle.Bold);
+            g.ForeColor = C_TEXT;
+            g.BackColor = C_CARD;
+            g.Padding = new Padding(10, 6, 10, 8);
+            g.Dock = DockStyle.Fill;
+            g.Margin = new Padding(0, 0, 0, 6);
+            return g;
+        }
+
+        private static CheckBox MakeCheck(string text, bool @checked)
+        {
+            CheckBox c = new CheckBox();
+            c.Text = text;
+            c.Font = new Font(UiFamily, 9F);
+            c.ForeColor = C_TEXT;
+            c.Checked = @checked;
+            c.AutoSize = false;
+            c.Dock = DockStyle.Fill;
+            c.TextAlign = ContentAlignment.MiddleLeft;
+            c.Margin = new Padding(0);
+            return c;
+        }
+
+        private static Button MakeButton(string text, bool primary)
+        {
+            Button b = new Button();
+            b.Text = text;
+            b.FlatStyle = FlatStyle.Flat;
+            b.FlatAppearance.BorderSize = 1;
+            b.FlatAppearance.BorderColor = primary ? C_ACCENT : C_BORDER;
+            b.UseVisualStyleBackColor = false;
+            b.BackColor = primary ? C_ACCENT : C_CARD;
+            b.ForeColor = primary ? Color.White : C_TEXT;
+            b.Font = new Font(UiFamily, primary ? 10F : 9F, primary ? FontStyle.Bold : FontStyle.Regular);
+            b.Cursor = Cursors.Hand;
+            b.Margin = new Padding(0);
+            return b;
+        }
+
+        /** 实例列表列宽：第一列吃满剩余宽度，后三列固定。 */
+        private void FitInstanceColumns()
+        {
+            if (instanceList == null || instanceList.Columns.Count < 4) return;
+            int fixedW = 90 + 130 + 100 + 8;
+            int w = instanceList.ClientSize.Width - fixedW;
+            if (w < 160) w = 160;
+            instanceList.Columns[0].Width = w;
         }
 
         // ---------- 路径 ----------
@@ -235,6 +595,77 @@ namespace PhiMCSetup
             return Path.Combine(InstallRoot(), "config", "phimc", "songs");
         }
 
+        /// <summary>
+        /// 资源包目录：<b>游戏真正读的那个</b>{@code <安装根>/config/phimc/respack}。
+        ///
+        /// <p>目录名 {@code phimc/respack} 与 mod 侧的 {@code ConfigDir.NAME} + {@code ResPack.DIR_NAME}
+        /// 一致；因为安装器一律按版本隔离装，所以它就是
+        /// {@code .minecraft/versions/<实例>/config/phimc/respack}。没有选中实例时退回 .minecraft 根
+        /// （非隔离启动器的位置）。
+        /// </summary>
+        private string ResPackDir()
+        {
+            if (SelectedVersion().Length == 0)
+                return Path.Combine(McDir(), "config", "phimc", "respack");
+            return Path.Combine(InstallRoot(), "config", "phimc", "respack");
+        }
+
+        /// <summary>建好资源包目录（连同上一层的 config\phimc）并返回路径。</summary>
+        private string EnsureResPackDir()
+        {
+            string dir = ResPackDir();
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
+        /// <summary>
+        /// 「打开资源包文件夹」按钮：目录不存在就建一个空目录再打开 ——
+        /// 没安装过（连 config\phimc 都没有）也能直接打开丢 .zip 进去。
+        /// </summary>
+        private void OpenResPackFolder()
+        {
+            string dir;
+            try
+            {
+                dir = EnsureResPackDir();
+            }
+            catch (Exception e)
+            {
+                Print("× 建资源包目录失败：" + e.Message);
+                SetResult(false, "打不开资源包文件夹",
+                    "确认 .minecraft 目录可写，或用管理员运行（安装器默认已请求管理员）");
+                return;
+            }
+            try
+            {
+                Process.Start("explorer.exe", "\"" + dir + "\"");
+                Print("√ 已打开资源包文件夹：" + dir);
+                int zips = 0;
+                try { zips = Directory.GetFiles(dir, "*.zip").Length; }
+                catch (Exception) { }
+                Print("  " + (zips == 0
+                    ? "现在还是空的：把材质包 .zip 直接放进这个文件夹，进游戏 → 设置 → 材质包 就能选到"
+                    : "里面已有 " + zips + " 个 .zip：进游戏 → 设置 → 材质包 用【" + "文件名" + "】按钮切换"));
+                SetProgress(progressBar.Value, "资源包文件夹：" + dir);
+                SetResult(true, "已打开资源包文件夹", "把 .zip 放进去后进游戏设置页切换");
+            }
+            catch (Exception e)
+            {
+                Print("× 打开资源包文件夹失败：" + e.Message);
+                SetResult(false, "打不开资源包文件夹", "请手动在资源管理器里打开：" + dir);
+            }
+        }
+
+        /** 资源包说明行 = 固定文案 + 真实路径（用户不用猜到底打开的是哪个目录）。 */
+        private void UpdateResPackHint()
+        {
+            if (respackHint == null) return;
+            string dir;
+            try { dir = ResPackDir(); }
+            catch (Exception) { dir = ""; }
+            respackHint.Text = "把材质包 .zip 放进这个文件夹，游戏内设置页即可选择：  " + dir;
+        }
+
         /// <summary>上次扫到几个版本 / 有没有 Fabric 版本（给状态行用）。</summary>
         private int detectedCount;
         private bool detectedFabric;
@@ -243,21 +674,29 @@ namespace PhiMCSetup
         {
             string mc = DetectInstanceMc(SelectedVersion());
             ModVariant v = VariantFor(mc);
-            rootLabel.Text = "安装到：" + InstallRoot() +
-                (Isolated() ? "   （版本隔离）" : "   （全局）");
-            if (v != null)
+            bool hasInst = instNames.Count > 0;
+            rootLabel.Text = hasInst
+                ? "安装到：" + InstallRoot() + (Isolated() ? "   （版本隔离）" : "   （全局）")
+                : "还没找到任何实例：请先装好 Minecraft（或用启动器装一个 Fabric 实例）再点【↻ 刷新】";
+            if (!hasInst)
             {
-                statusLabel.ForeColor = Color.LightGreen;
+                statusLabel.ForeColor = C_MUTED;
+                statusLabel.Text = "支持的版本：" + SupportedMcList();
+            }
+            else if (v != null)
+            {
+                statusLabel.ForeColor = C_OK;
                 statusLabel.Text = "实例 MC " + mc + " → " + v.JarName + " + " + v.FabricApiName
-                    + "  （检测到 " + detectedCount + " 个版本"
-                    + (detectedFabric ? "" : "，没有 Fabric 版本！点【装 Fabric】") + "）";
+                    + "  （检测到 " + detectedCount + " 个实例"
+                    + (detectedFabric ? "" : "，没有 Fabric 实例！点【装 Fabric】") + "）";
             }
             else
             {
-                statusLabel.ForeColor = Color.OrangeRed;
+                statusLabel.ForeColor = C_ERR;
                 statusLabel.Text = (mc == null ? "认不出这个实例的 MC 版本" : "不支持 Minecraft " + mc)
                     + "（支持：" + SupportedMcList() + "）—— 不会装错，请换一个受支持的实例";
             }
+            UpdateResPackHint();
             SaveSettings();
         }
 
@@ -320,12 +759,18 @@ namespace PhiMCSetup
         {
             if (ver != null)
             {
-                for (int i = 0; i < versionBox.Items.Count; i++)
+                for (int i = 0; i < instNames.Count; i++)
                 {
-                    if (versionBox.Items[i].ToString() == ver) { versionBox.SelectedIndex = i; break; }
+                    if (string.Equals(instNames[i], ver, StringComparison.OrdinalIgnoreCase))
+                    {
+                        wantedIndex = i;     // silent 模式（--install）没有句柄，靠它兜底
+                        instanceList.Items[i].Selected = true;
+                        instanceList.Items[i].Focused = true;
+                        break;
+                    }
                 }
             }
-            isoBox.Checked = iso;
+            isoBox.Checked = Isolated();
         }
 
         // ---------- 版本探测 ----------
@@ -333,51 +778,139 @@ namespace PhiMCSetup
         private void RefreshVersions(bool verbose)
         {
             string keep = SelectedVersion();
-            versionBox.Items.Clear();
+            instNames.Clear();
+            instanceList.BeginUpdate();
+            instanceList.Items.Clear();
+
             string versions = Path.Combine(McDir(), "versions");
             int found = 0;
             bool hasFabric = false;
+            int installed = 0;
             if (Directory.Exists(versions))
             {
                 string[] dirs = Directory.GetDirectories(versions);
-                Array.Sort(dirs);
+                Array.Sort(dirs, StringComparer.OrdinalIgnoreCase);
                 foreach (string d in dirs)
                 {
                     string name = Path.GetFileName(d);
-                    versionBox.Items.Add(name);
+                    string mc = DetectInstanceMc(name);
+                    string loader = DetectLoader(name);
+                    bool has = IsPhimcInstalled(name);
+                    ListViewItem it = new ListViewItem(name);
+                    it.SubItems.Add(mc == null ? "?" : mc);
+                    it.SubItems.Add(loader);
+                    it.SubItems.Add(has ? "√ 已装" : "—");
+                    it.Tag = name;
+                    instanceList.Items.Add(it);
+                    instNames.Add(name);
                     if (name.ToLowerInvariant().Contains("fabric")) hasFabric = true;
+                    if (has) installed++;
                     found++;
                 }
             }
-            if (found == 0)
-            {
-                versionBox.Items.Add(Variants[Variants.Length - 1].Mc);
-            }
+            instanceList.EndUpdate();
+            if (found == 0 && verbose)
+                instanceList.Items.Add(new ListViewItem("（没找到任何实例）"));
 
             detectedCount = found;
             detectedFabric = hasFabric;
 
             // 优先：Fabric+支持版本 > 含 fabric > 上次选的 > 支持版本 > 第一个
             int idx = -1;
-            for (int i = 0; i < versionBox.Items.Count && idx < 0; i++)
+            for (int i = 0; i < instNames.Count && idx < 0; i++)
             {
-                string s = versionBox.Items[i].ToString().ToLowerInvariant();
-                if (s.Contains("fabric") && VariantFor(DetectInstanceMc(versionBox.Items[i].ToString())) != null) idx = i;
+                if (instNames[i].ToLowerInvariant().Contains("fabric")
+                    && VariantFor(DetectInstanceMc(instNames[i])) != null) idx = i;
             }
-            for (int i = 0; i < versionBox.Items.Count && idx < 0; i++)
-                if (versionBox.Items[i].ToString().ToLowerInvariant().Contains("fabric")) idx = i;
-            for (int i = 0; i < versionBox.Items.Count && idx < 0; i++)
-                if (keep != null && versionBox.Items[i].ToString() == keep) idx = i;
-            for (int i = 0; i < versionBox.Items.Count && idx < 0; i++)
-                if (VariantFor(DetectInstanceMc(versionBox.Items[i].ToString())) != null) idx = i;
-            versionBox.SelectedIndex = idx >= 0 ? idx : 0;
+            for (int i = 0; i < instNames.Count && idx < 0; i++)
+                if (instNames[i].ToLowerInvariant().Contains("fabric")) idx = i;
+            for (int i = 0; i < instNames.Count && idx < 0; i++)
+                if (keep != null && keep.Length > 0 && instNames[i] == keep) idx = i;
+            for (int i = 0; i < instNames.Count && idx < 0; i++)
+                if (VariantFor(DetectInstanceMc(instNames[i])) != null) idx = i;
+            if (idx < 0 && instNames.Count > 0) idx = 0;
 
-            bool iso = GuessIsolation(SelectedVersion());
-            isoBox.Checked = iso;
+            if (idx >= 0 && idx < instanceList.Items.Count)
+            {
+                wantedIndex = idx;
+                instanceList.Items[idx].Selected = true;
+                instanceList.Items[idx].Focused = true;
+                instanceList.EnsureVisible(idx);
+            }
+
+            isoBox.Checked = Isolated();
+            FitInstanceColumns();
             ApplyLayoutForVersion();
 
-            if (!hasFabric && verbose) Print("× 没找到任何 Fabric 版本 —— mod 不会加载，先点【装 Fabric】");
-            if (verbose) Print("√ 扫描完成：" + found + " 个版本，" + (iso ? "已按版本隔离处理" : "按全局 mods 处理"));
+            if (!hasFabric && verbose) Print("× 没找到任何 Fabric 实例 —— mod 不会加载，先点【装 Fabric】");
+            if (verbose)
+                Print("√ 扫描完成：" + found + " 个实例（已装 PhiMC " + installed + " 个），"
+                    + (GuessIsolation(SelectedVersion()) ? "该实例有 mods/config，按版本隔离处理" : "按版本隔离处理"));
+        }
+
+        /// <summary>
+        /// 加载器名字：目录名 {@code fabric-loader-0.16.14-1.21.1} 优先，
+        /// 其次读实例 json 里 fabric-loader 库的版本，最后按关键字兜底。
+        /// </summary>
+        private string DetectLoader(string ver)
+        {
+            string low = ver.ToLowerInvariant();
+            System.Text.RegularExpressions.Match m =
+                System.Text.RegularExpressions.Regex.Match(low, "fabric-loader-([0-9]+(?:\\.[0-9]+)+)");
+            if (m.Success) return "Fabric " + m.Groups[1].Value;
+            if (low.Contains("quilt-loader-"))
+            {
+                System.Text.RegularExpressions.Match q =
+                    System.Text.RegularExpressions.Regex.Match(low, "quilt-loader-([0-9]+(?:\\.[0-9]+)+)");
+                return "Quilt " + (q.Success ? q.Groups[1].Value : "");
+            }
+            if (low.Contains("neoforge")) return "NeoForge";
+            if (low.Contains("forge")) return "Forge";
+
+            string json = Path.Combine(McDir(), "versions", ver, ver + ".json");
+            try
+            {
+                if (File.Exists(json))
+                {
+                    string text = File.ReadAllText(json);
+                    System.Text.RegularExpressions.Match f = System.Text.RegularExpressions.Regex.Match(
+                        text, "fabric-loader[\\s\"':,]*([0-9]+(?:\\.[0-9]+)+)",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (f.Success) return "Fabric " + f.Groups[1].Value;
+                    if (text.IndexOf("quilt-loader", StringComparison.OrdinalIgnoreCase) >= 0) return "Quilt";
+                    if (text.IndexOf("neoforge", StringComparison.OrdinalIgnoreCase) >= 0) return "NeoForge";
+                    if (text.IndexOf("\"forge\"", StringComparison.OrdinalIgnoreCase) >= 0) return "Forge";
+                }
+            }
+            catch (Exception) { }
+            return low.Contains("fabric") ? "Fabric" : "原版";
+        }
+
+        /// <summary>
+        /// 这个实例的 mods/ 里有没有 PhiMC：文件名前缀命中，<b>或者</b> jar 内
+        /// {@code fabric.mod.json} 的 id 就是本 mod（改名前的旧 jar 也算已装）。
+        /// </summary>
+        private bool IsPhimcInstalled(string ver)
+        {
+            string mods = Path.Combine(McDir(), "versions", ver, "mods");
+            try
+            {
+                if (!Directory.Exists(mods)) return false;
+                string[] jars = Directory.GetFiles(mods, "*.jar");
+                foreach (string f in jars)
+                {
+                    if (Path.GetFileName(f).StartsWith(ModJarPrefix, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+                // 兜底：读 fabric.mod.json（只在 jar 不多时扫，避免大盘实例卡界面）
+                if (jars.Length > 80) return false;
+                foreach (string f in jars)
+                {
+                    if (string.Equals(JarModId(f), ModId, StringComparison.OrdinalIgnoreCase)) return true;
+                }
+            }
+            catch (Exception) { }
+            return false;
         }
 
         /// <summary>猜这个版本是不是版本隔离：看 versions&lt;ver&gt; 里有没有 mods / config / saves。</summary>
@@ -394,8 +927,15 @@ namespace PhiMCSetup
 
         private string SelectedVersion()
         {
-            if (versionBox.SelectedItem == null) return "";
-            return versionBox.SelectedItem.ToString();
+            if (instanceList != null && instanceList.SelectedIndices.Count > 0)
+            {
+                int i = instanceList.SelectedIndices[0];
+                if (i >= 0 && i < instNames.Count) return instNames[i];
+            }
+            // ListView 还没有原生句柄时（构造期 / --install 无界面模式）SelectedIndices 是空的，
+            // 用 RefreshVersions 算出来的目标行兜底，保证「选中哪一行」不依赖窗口是否已显示
+            if (wantedIndex >= 0 && wantedIndex < instNames.Count) return instNames[wantedIndex];
+            return "";
         }
 
         // ---------- 版本 → 内嵌 jar 的映射 ----------
@@ -620,9 +1160,87 @@ namespace PhiMCSetup
 
         // ---------- 安装 ----------
 
+        /// <summary>
+        /// 写一行日志。颜色按行首符号自动分：{@code ×}=红（失败）、{@code √}=绿（成功）、
+        /// {@code →}=蓝（建议 / 结论）、{@code ·}/{@code 两个空格} 开头=灰（细节）。
+        /// </summary>
         private void Print(string s)
         {
-            log.AppendText("[" + DateTime.Now.ToString("HH:mm:ss") + "] " + s + "\r\n");
+            string t = s == null ? "" : s;
+            Color c = C_TEXT;
+            if (t.StartsWith("×")) c = C_ERR;
+            else if (t.StartsWith("√")) c = C_OK;
+            else if (t.StartsWith("→")) c = C_ACCENT;
+            else if (t.StartsWith("·") || t.StartsWith("  ") || t.StartsWith("—")) c = C_MUTED;
+            AppendLog("[" + DateTime.Now.ToString("HH:mm:ss") + "] " + t, c);
+        }
+
+        private void AppendLog(string line, Color color)
+        {
+            logText.Append(line).Append("\r\n");
+            if (log == null) return;
+            try
+            {
+                log.SelectionStart = log.TextLength;
+                log.SelectionLength = 0;
+                log.SelectionColor = color;
+                log.AppendText(line + "\r\n");
+                log.SelectionColor = C_TEXT;
+                log.ScrollToCaret();
+            }
+            catch (Exception) { }
+        }
+
+        /** 日志纯文本（silent 模式导出 / 诊断用）。 */
+        private string LogText()
+        {
+            return logText.ToString();
+        }
+
+        /** 进度条定值模式（0-100）：很长的写盘之前先让界面画出来。 */
+        private void SetProgress(int pct, string text)
+        {
+            if (progressBar == null) return;
+            progressBar.Style = ProgressBarStyle.Continuous;
+            if (pct < 0) pct = 0;
+            if (pct > 100) pct = 100;
+            try { progressBar.Value = pct; }
+            catch (Exception) { }
+            if (text != null && progressLabel != null) progressLabel.Text = (pct + "%  ") + text;
+            PumpUi();
+        }
+
+        /** 不确定要多久的步骤（跑 Fabric 安装器 / 写 78MB）：comctl32 自己会跑跑马灯。 */
+        private void SetBusy(string text)
+        {
+            if (progressBar == null) return;
+            progressBar.Style = ProgressBarStyle.Marquee;
+            progressBar.MarqueeAnimationSpeed = 30;
+            if (progressLabel != null) progressLabel.Text = text;
+            PumpUi();
+        }
+
+        /**
+         * 让进度条 / 日志先画一帧。
+         *
+         * <p>只在 {@link #busy} 期间泵消息，并且安装期间所有动作按钮都已禁用 ——
+         * 不然 DoEvents 会让用户点出第二个安装线程。
+         */
+        private void PumpUi()
+        {
+            try { Application.DoEvents(); }
+            catch (Exception) { }
+        }
+
+        /**
+         * 结果横幅：成功绿、失败红，失败一律带上「下一步」建议。
+         */
+        private void SetResult(bool ok, string main, string next)
+        {
+            if (resultLabel == null) return;
+            resultLabel.ForeColor = ok ? C_OK : C_ERR;
+            resultLabel.Text = (ok ? "√  " : "×  ") + main
+                + (string.IsNullOrEmpty(next) ? "" : "    下一步：" + next);
         }
 
         private void OpenFolder(string path)
@@ -631,10 +1249,11 @@ namespace PhiMCSetup
             {
                 if (!Directory.Exists(path)) Directory.CreateDirectory(path);
                 Process.Start("explorer.exe", "\"" + path + "\"");
+                Print("√ 已打开：" + path);
             }
             catch (Exception e)
             {
-                Print("打开失败：" + e.Message);
+                Print("× 打开失败：" + e.Message);
             }
         }
 
@@ -876,7 +1495,12 @@ namespace PhiMCSetup
         }
 
         /// <summary>
-        /// 把某个版本对应的 mod jar + Fabric API 写进 mods/（先清掉别的同 mod jar，避免两个版本同时被加载）。
+        /// 把某个版本对应的 mod jar + Fabric API 写进 mods/。
+        ///
+        /// <p>三个勾选项在这里生效：
+        /// <b>删旧 jar</b>（{@link #deleteOldBox}）—— mods/ 里只能有一个 phimc-*.jar；
+        /// <b>覆盖</b>（{@link #overwriteBox}）—— 不勾时同名且大小一致就跳过；
+        /// <b>装 Fabric API</b>（{@link #apiBox}）—— 不勾时只写 mod jar。
         /// 内嵌资源优先，其次看安装器旁边的 dist/&lt;jar 名&gt;。
         /// </summary>
         private bool InstallModFiles(ModVariant v, bool verbose, out string err)
@@ -892,29 +1516,99 @@ namespace PhiMCSetup
 
             Directory.CreateDirectory(ModsDir());
             // 清掉其它版本的 mod jar：两个版本的 PhiMC 同时在 mods/ 里会双双加载失败
-            try
+            if (OptDeleteOldJars())
             {
-                foreach (string old in OwnModJars())
+                try
                 {
-                    if (string.Equals(Path.GetFileName(old), v.JarName, StringComparison.OrdinalIgnoreCase)) continue;
-                    File.Delete(old);
-                    if (verbose) Print("· 已删除旧 jar：" + Path.GetFileName(old));
+                    foreach (string old in OwnModJars())
+                    {
+                        if (string.Equals(Path.GetFileName(old), v.JarName, StringComparison.OrdinalIgnoreCase)) continue;
+                        File.Delete(old);
+                        if (verbose) Print("· 已删除旧 jar：" + Path.GetFileName(old));
+                    }
                 }
+                catch (Exception e) { if (verbose) Print("· 清理旧 jar 失败（不影响本次写入）：" + e.Message); }
             }
-            catch (Exception e) { if (verbose) Print("· 清理旧 jar 失败（不影响本次写入）：" + e.Message); }
+            else
+            {
+                try
+                {
+                    string[] own = OwnModJars();
+                    if (own.Length > 1 && verbose)
+                        Print("· 警告：mods/ 里有 " + own.Length + " 个 PhiMC jar（按勾选没删），两个都会被加载，可能冲突");
+                }
+                catch (Exception) { }
+            }
 
             string target = Path.Combine(ModsDir(), v.JarName);
-            if (!WriteJarVerified(jar, target, out err)) return false;
-            if (verbose) Print("√ 已写入 mod：" + target + "  " + jar.Length + " 字节（已回读校验）");
+            bool skipWrite = false;
+            if (!OptOverwrite() && File.Exists(target))
+            {
+                try
+                {
+                    long len = new FileInfo(target).Length;
+                    if (len == jar.Length) skipWrite = true;
+                    else if (verbose)
+                        Print("· 已有 " + v.JarName + " 但大小不同（" + len + " vs " + jar.Length + "），仍然覆盖");
+                }
+                catch (Exception) { }
+            }
+            if (skipWrite)
+            {
+                if (verbose) Print("· 已有同名且大小一致的 jar，按勾选跳过写入：" + target);
+            }
+            else
+            {
+                if (!WriteJarVerified(jar, target, out err)) return false;
+                if (verbose) Print("√ 已写入 mod：" + target + "  " + jar.Length + " 字节（已回读校验）");
+            }
+
+            if (!OptInstallFabricApi())
+            {
+                if (verbose)
+                {
+                    Print("· 按勾选跳过 Fabric API");
+                    Print("→ 注意：PhiMC 依赖 Fabric API，mods/ 里没有它游戏里不会加载");
+                }
+                return true;
+            }
             return InstallFabricApi(v, verbose);
+        }
+
+        /// <summary>勾选项读取（控件还没建好时给「按默认值」的兜底）。</summary>
+        private bool OptInstallFabricApi()
+        {
+            return apiBox == null || apiBox.Checked;
+        }
+
+        private bool OptOverwrite()
+        {
+            return overwriteBox == null || overwriteBox.Checked;
+        }
+
+        private bool OptDeleteOldJars()
+        {
+            return deleteOldBox == null || deleteOldBox.Checked;
+        }
+
+        /// <summary>安装期间禁用会重入的按钮，结束（成功或失败）一律恢复。</summary>
+        private void SetActionsEnabled(bool on)
+        {
+            Button[] bs = new Button[] { installBtn, respackBtn, songsBtn, modsBtn,
+                diagBtn, builtinBtn, refreshBtn, fabricBtn };
+            foreach (Button b in bs) if (b != null) b.Enabled = on;
+            Cursor = on ? Cursors.Default : Cursors.WaitCursor;
         }
 
         private void FullInstall()
         {
+            if (busy) return;
             string ver = SelectedVersion();
             if (ver.Length == 0)
             {
-                MessageBox.Show(this, "请先选择游戏版本。", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                SetResult(false, "还没选择实例", "在【② 选择实例】里点一行，再点【↻ 刷新】重扫");
+                MessageBox.Show(this, "请先在【② 选择实例】列表里点一行（那就是安装目标）。",
+                    "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             string mc = DetectInstanceMc(ver);
@@ -926,12 +1620,40 @@ namespace PhiMCSetup
                     : "本安装器没有 Minecraft " + mc + " 的 jar";
                 Print("× " + why + "：实例「" + ver + "」");
                 Print("  支持的版本：" + SupportedMcList());
+                SetResult(false, "不支持这个版本：" + ver + "（" + (mc ?? "?") + "）",
+                    "换成支持列表里的实例，或点【装 Fabric】给该版本装 Fabric");
+                SetProgress(0, "未安装");
                 MessageBox.Show(this,
                     why + "。\r\n\r\n实例：" + ver + "\r\n支持：" + SupportedMcList() + "\r\n\r\n" +
                     "不会安装（避免装错版本）。请换一个受支持的实例，或把该实例升级/降级到支持列表里的版本。",
                     "不支持这个版本", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
+
+            busy = true;
+            SetActionsEnabled(false);
+            ResetInstallUi();
+            try
+            {
+                RunInstall(ver, mc, variant);
+            }
+            finally
+            {
+                busy = false;
+                SetActionsEnabled(true);
+            }
+        }
+
+        /** 每次新装从 0 开始，避免上一次的进度 / 结果横幅残留在界面上误导用户。 */
+        private void ResetInstallUi()
+        {
+            SetProgress(0, "开始安装…");
+            if (resultLabel != null) resultLabel.Text = "";
+        }
+
+        private void RunInstall(string ver, string mc, ModVariant variant)
+        {
+            SetProgress(8, "检查目录权限…");
             string err;
             if (!EnsureDirs(out err))
             {
@@ -942,14 +1664,31 @@ namespace PhiMCSetup
                 {
                     Print("  尝试补权限…");
                     GrantAcl(InstallRoot());
-                    if (!EnsureDirs(out err)) { Print("× 仍然失败：" + err); return; }
+                    if (!EnsureDirs(out err))
+                    {
+                        Print("× 仍然失败：" + err);
+                        Print("→ 下一步：手动给这个目录写权限，或用管理员运行安装器");
+                        SetResult(false, "建目录失败（没有写权限）", "以管理员运行安装器，或换一个可写的 .minecraft 目录");
+                        SetProgress(0, "安装中止");
+                        return;
+                    }
                     Print("√ 补权限后成功");
                 }
-                else if (TryElevate()) { Print("已用管理员身份重开安装器，请在新窗口再点【①】"); return; }
-                else return;
+                else if (TryElevate())
+                {
+                    Print("→ 已用管理员身份重开安装器，请在新窗口再点【立即安装】");
+                    SetResult(false, "需要管理员权限", "在刚弹出的新窗口里再点一次【立即安装】");
+                    return;
+                }
+                else
+                {
+                    SetResult(false, "建目录失败", "以管理员运行安装器，或换一个可写的 .minecraft 目录");
+                    return;
+                }
             }
             Print("√ 目录就绪：" + InstallRoot());
             Print("  实例 Minecraft " + mc + "  →  " + variant.JarName + " + " + variant.FabricApiName);
+            SetProgress(20, "写入 mod jar…");
 
             if (!InstallModFiles(variant, true, out err))
             {
@@ -959,16 +1698,26 @@ namespace PhiMCSetup
                 string fallback;
                 try { fallback = ExportFallback(ReadEmbeddedJar(variant), variant); Print("→ 已导出到：" + fallback); }
                 catch (Exception ex) { fallback = "(导出失败: " + ex.Message + ")"; Print("× " + fallback); }
+                Print("→ 下一步：完全退出游戏/启动器后重试；或以管理员重试；或把 " + variant.JarName
+                    + " 手动复制进 " + ModsDir());
+                SetResult(false, "写文件失败：" + Short(err, 80), "退出游戏后重试，或以管理员重试（也可用导出的手动安装包）");
+                SetProgress(0, "安装中止");
                 DialogResult r = MessageBox.Show(this,
                     "写文件失败：\r\n\r\n" + err + "\r\n\r\n要【是】= 以管理员重试，【否】= 打开导出目录手动复制？",
                     "写入失败", MessageBoxButtons.YesNo, MessageBoxIcon.Error);
                 if (r == DialogResult.Yes) TryElevate();
-                else Process.Start("explorer.exe", "\"" + fallback + "\"");
+                else
+                {
+                    try { Process.Start("explorer.exe", "\"" + fallback + "\""); }
+                    catch (Exception) { }
+                }
                 return;
             }
             Print("  曲目目录：" + SongsDir());
+            SetProgress(55, "投放入内置谱面…");
 
             InstallBuiltinSongs();
+            SetProgress(80, "导入拖入的谱面包…");
 
             foreach (string z in new System.Collections.Generic.List<string>(dropped))
             {
@@ -976,19 +1725,32 @@ namespace PhiMCSetup
                 catch (Exception e) { Print("× " + Path.GetFileName(z) + "：" + e.Message); }
             }
 
+            SetProgress(92, "诊断…");
             SaveSettings();
             Diagnose();
+            SetProgress(100, "安装完成");
+            SetResult(true, "安装完成：" + variant.JarName + " → " + ModsDir(),
+                "启动游戏并选「" + ver + "」实例；材质包 .zip 丢进【打开资源包文件夹】");
             MessageBox.Show(this,
                 "安装完成！\r\n\r\n" +
                 "实例：" + ver + "（Minecraft " + mc + "，" + (Isolated() ? "版本隔离" : "全局") + "）\r\n" +
                 "mod：" + Path.Combine(ModsDir(), variant.JarName) + "\r\n" +
-                "Fabric API：" + variant.FabricApiName + "\r\n" +
-                "曲目：" + SongsDir() + "\r\n\r\n" +
+                "Fabric API：" + (OptInstallFabricApi() ? variant.FabricApiName : "（按勾选跳过）") + "\r\n" +
+                "曲目：" + SongsDir() + "\r\n" +
+                "材质包：" + ResPackDir() + "\r\n\r\n" +
                 "下一步：\r\n" +
                 "1) 启动游戏，用启动器选「" + ver + "」\r\n" +
                 "2) 创造模式物品栏 → PhiMC 页签 → 拿「谱面播放器」\r\n" +
                 "3) 右键它选歌开始",
                 "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /** 一行提示用的短文本（长异常信息塞不进结果横幅）。 */
+        private static string Short(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            string one = s.Replace("\r", " ").Replace("\n", " ").Trim();
+            return one.Length <= max ? one : one.Substring(0, max) + "…";
         }
 
         private bool TryElevate()
@@ -1290,8 +2052,8 @@ namespace PhiMCSetup
                     try { f.ImportZip(z); } catch (Exception e) { f.Print("× " + Path.GetFileName(z) + "：" + e.Message); }
                 }
                 try { f.Diagnose(); } catch (Exception) { }
-                try { File.WriteAllText(Path.Combine(f.McDir(), "phimc-install.log"), f.log.Text); } catch (Exception) { }
-                try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "phimc-install.log"), f.log.Text); } catch (Exception) { }
+                try { File.WriteAllText(Path.Combine(f.McDir(), "phimc-install.log"), f.LogText()); } catch (Exception) { }
+                try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "phimc-install.log"), f.LogText()); } catch (Exception) { }
                 Environment.Exit(ok ? 0 : 1);
             }
 

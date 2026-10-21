@@ -7,7 +7,9 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
+import net.minecraft.util.Util;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,20 +21,20 @@ import java.util.List;
  *
  * <h2>布局常量（本机没有可交互客户端，界面只能靠这些常量核对）</h2>
  * <pre>
- * 面板宽 PANEL_W = 360，水平居中：cx-180 .. cx+180
+ * 面板宽 PANEL_W = 400，水平居中：cx-200 .. cx+200
  * y=6            面板顶
  * y=12           标题（居中）
  * y=30           说明行（灰色：改一项存一次）
  * y=44           说明行（灰色：存档路径）
  * TOP = 58       第一行
  * ROW_H = 28     行高（按钮高 18，行内垂直居中 +5）
- * 左侧文字列 dx  = cx - 168（PANEL_W/2 - 12）
+ * 左侧文字列 dx  = cx - 188（PANEL_W/2 - 12）
  * 右侧控件列 dx  = cx + 10
  * 行 0 打击音     右侧 [开]/[关] 90×18
  * 行 1 音量       右侧 [-] 28 / 「80%」文字 / [+] 28 / [试听] 60
  * 行 2 判定偏移   右侧 [-] 28 / 「+50ms」文字 / [+] 28 / [重置] 60（步进 10ms，范围 ±300ms）
  * 行 3 偏移说明   灰色小字：「＋ = 谱面提前 …；－ = 谱面延后 …」
- * 行 4 材质包     右侧 [文件名] 120 / [↻ 刷新] 44
+ * 行 4 材质包     右侧 [文件名] 92 / [↻] 26 / [打开文件夹] 58
  * 行 5/6         材质包现状 / 目录提示（灰色小字）
  * 底部 FOOTER_H = 28：[返回] 80×18，Esc 同效
  * </pre>
@@ -48,7 +50,7 @@ import java.util.List;
 public class SettingsScreen extends Screen {
 
     // ---------------- 布局常量（见类注释） ----------------
-    private static final int PANEL_W = 360;
+    private static final int PANEL_W = 400;
     private static final int TOP = 58;
     private static final int ROW_H = 28;
     private static final int BTN_H = 18;
@@ -142,19 +144,25 @@ public class SettingsScreen extends Screen {
             clearAndInit();
         }).dimensions(cx + 120, rowY(2), 60, BTN_H).build());
 
-        // ---- 行 4：材质包（点一下换下一个，含「不使用」）+ 刷新 ----
+        // ---- 行 4：材质包（点一下换下一个，含「不使用」）+ 刷新 + 打开文件夹 ----
         addDrawableChild(ButtonWidget.builder(Text.literal(packLabel(profile.resPack())), b -> {
             String next = nextPack(profile.resPack());
             profile.resPack(next);                      // 内部立刻 save()
             PhiMCClient.applyResPack(next);         // 贴图 / 打击音立刻换
             notice = next.isEmpty() ? "材质包：不使用（纯色矩形）" : "材质包：" + next;
             clearAndInit();
-        }).dimensions(cx + 10, rowY(4), 120, BTN_H).build());
+        }).dimensions(cx + 10, rowY(4), 92, BTN_H).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("↻ 刷新"), b -> {
-            notice = "材质包列表已刷新";
+        addDrawableChild(ButtonWidget.builder(Text.literal("↻"), b -> {
+            notice = "材质包列表已刷新（" + Math.max(0, buildPackOptions().size() - 1) + " 个 zip）";
             clearAndInit();
-        }).dimensions(cx + 136, rowY(4), 44, BTN_H).build());
+        }).dimensions(cx + 106, rowY(4), 26, BTN_H).build());
+
+        // 「打开文件夹」：系统文件管理器打开 config/phimc/respack/（不存在就建），
+        // 让用户不用记路径就能把 .zip 丢进去。Util.getOperatingSystem().open(File)
+        // 在 1.20 ~ 1.21.11 全系可用（mappings: method_672），不需要 Stonecutter 分支。
+        addDrawableChild(ButtonWidget.builder(Text.literal("打开文件夹"), b -> openResPackFolder())
+                .dimensions(cx + 136, rowY(4), 58, BTN_H).build());
 
         // ---- 键盘游玩 开/关：已删（键盘恒开，Profile.useKeyboard 只为存档兼容保留） ----
 
@@ -184,10 +192,37 @@ public class SettingsScreen extends Screen {
         return out;
     }
 
-    /** 当前选择 → 显示名（文件太长时截断，「不使用」显示成中文）。 */
+    /** 当前选择 → 显示名（文件太长时截断，「不使用」显示成中文）。按钮现在只有 92 宽，所以截到 9 个字。 */
     private static String packLabel(String current) {
         if (current == null || current.isBlank()) return "不使用";
-        return shortText(current, 12);
+        return shortText(current, 9);
+    }
+
+    /**
+     * 用系统文件管理器打开 {@code config/phimc/respack/}。
+     *
+     * <p>路径不硬编码：{@link ResPack#dir()} 内部走 {@code ConfigDir.modDir(configDir)} +
+     * {@code ResPack.DIR_NAME}（{@code "respack"}），而且它自己会
+     * {@code Files.createDirectories} —— 所以「一个 zip 都还没放、目录也不存在」时点下去也能打开。
+     *
+     * <p>用 {@code Util.getOperatingSystem().open(File)}（Yarn {@code method_672}）：跨 Windows / macOS
+     * / Linux，1.20 ~ 1.21.11 映射一致，不需要 Stonecutter 分支，也不引 {@code java.awt.Desktop}
+     * （部分 JRE 是 headless，Desktop 会抛 UnsupportedOperationException）。
+     */
+    private void openResPackFolder() {
+        final Path dir;
+        try {
+            dir = ResPack.dir();
+        } catch (Throwable t) {
+            notice = "取资源包目录失败：" + t;
+            return;
+        }
+        try {
+            Util.getOperatingSystem().open(dir.toFile());
+            notice = "已打开资源包目录：" + dir;
+        } catch (Throwable t) {
+            notice = "打开失败（" + t + "）：" + dir;
+        }
     }
 
     /** 点一下换下一个（在「不使用」+ 目录列表里循环）。 */
@@ -317,15 +352,16 @@ public class SettingsScreen extends Screen {
                     + " · 贴图槽 " + String.join("/", ResPack.SLOTS);
             packColor = C_ACCENT;
         }
-        ctx.drawText(textRenderer, shortText(packNow, 46), labelX, rowY(5) + 5, packColor, false);
-        // 「列出」= 候选来自 ResPack.list()：这里报个数，点材质包按钮在「不使用」+ 列表里逐个切换
+        ctx.drawText(textRenderer, shortText(packNow, 40), labelX, rowY(5) + 5, packColor, false);
+        // 「列出」= 候选来自 ResPack.list()：这里报个数，点材质包按钮在「不使用」+ 列表里逐个切换；
+        // 新包不会自己冒出来 —— 路径提示 + 「打开文件夹」按钮就是给这一步用的
         int packs = Math.max(0, packOptions.size() - 1);
         ctx.drawText(textRenderer,
-                "respack 目录 " + packs + " 个 zip（另有「不使用」）· 点文件名切换",
+                "respack 目录 " + packs + " 个 zip · 点文件名切换，或点【打开文件夹】放新包",
                 labelX, rowY(6) + 5, C_GRAY, false);
 
         if (!notice.isEmpty()) {
-            ctx.drawText(textRenderer, shortText(notice, 46), labelX, height - FOOTER_H - 14, C_ACCENT, false);
+            ctx.drawText(textRenderer, shortText(notice, 40), labelX, height - FOOTER_H - 14, C_ACCENT, false);
         }
     }
 

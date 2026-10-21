@@ -32,3 +32,7 @@ fixtures/
 *.ogg
 *.mp3
 setup/payload/
+
+# 封面素材（含第三方画作，不入库）
+docs/cover/
+
