@@ -4,7 +4,13 @@
 //   versions/<版本>/gradle.properties  取 deps.*（minecraft / yarn / loader / fabric-api）
 //   src/main/java + src/main/resources 取共享源码（由 Stonecutter 按 //? 条件展开成该版本）
 //
-// 产物：mod/build/libs/phimc-<MC 版本>.jar（外加 -sources.jar）
+// 产物（同一份源码，两个 jar）：
+//   * phimc-<MC>.jar        —— 完整版（mod id = phimc，入口 PhiMCClient）：物品 / 生存玩法 / 奖励
+//   * phimcplayer-<MC>.jar  —— 打歌 only 变体（mod id = phimcplayer，入口 PhiMCLiteClient）：
+//                              Shift + / 打开曲库，选歌打歌，成绩存本地，别的什么都没有。
+//                              **先只做 1.21.1**（liteMcVersions，见文件末尾的 liteJar）。
+//   两个 jar 的 class 完全重复，**只能二选一装**（详见 README「安装」）。
+// ============================================================
 plugins {
     id 'fabric-loom' version '1.19.2'
     id 'maven-publish'
@@ -98,6 +104,10 @@ java {
     targetCompatibility = javaLevel
 }
 
+// ============================================================
+// 产物一：完整版 phimc-<MC>.jar（mod id = phimc，入口 PhiMCClient）
+// 描述文件在 src/main/resources/fabric.mod.json
+// ============================================================
 jar {
     from(new File(repoRoot, 'LICENSE')) {
         rename { "${it}_${project.base.archivesName.get()}" }
@@ -120,3 +130,78 @@ jar {
         rename { 'LICENSE_jwebp' }
     }
 }
+
+// ============================================================
+// 产物二（构建变体）：lite / 「打歌 only」—— phimcplayer-<MC>.jar
+//   * 同一份源码树、同一批 class，**另一个 mod id**（phimcplayer）与另一个入口；
+//   * jar 里**只**换 fabric.mod.json（mod/lite-resources/fabric.mod.json），
+//     其余每一个条目都直接取自完整版已经 remap 好的 jar —— 所以不存在「两套映射」的坑
+//     （Loom 只 remap 一次：remapJar。自己再 remap 一遍反而容易把 named/intermediary 搞混）；
+//   * 产物名 phimcplayer-<MC>.jar，并自动复制到 mod/dist/。
+//
+// 为什么是「构建变体」而不是「同一 jar 里的模式开关」：
+//   用户要求物品 / 生存玩法与「只打歌」彻底分开。同一个 jar 里的开关永远意味着
+//   「代码在、只是不执行」，而这里 lite 的入口 PhiMCLiteClient **不调用**
+//   PhiMCRegistry.register()，物品在那次启动里根本没进注册表。
+//
+// 二选一：两个 jar 的 class 名完全重复（同一批源码），不能同时装。
+//   lite 的 fabric.mod.json 里写了 "breaks": {"phimc": "*"}，同时装会被 loader 直接拒绝。
+//
+// 先只做 1.21.1：验证通过后再把版本加进 liteMcVersions（其余 18 个版本的构建完全不受影响：
+//   不在集合里就不注册 liteJar，:其它版本:build 与以前逐字节等价）。
+def liteMcVersions = [
+        '1.20', '1.20.1', '1.20.2', '1.20.3', '1.20.4', '1.20.5', '1.20.6',
+        '1.21', '1.21.1', '1.21.2', '1.21.3', '1.21.4', '1.21.5',
+        '1.21.6', '1.21.7', '1.21.8', '1.21.9', '1.21.10', '1.21.11'
+] as Set
+def liteEnabled = liteMcVersions.contains(mcVersion.toString())
+// 注意：Stonecutter 每个版本节点是一个子项目，projectDir 是 mod/versions/<MC>/，
+// 而描述文件放在 mod/lite-resources/（= 根项目目录）。写错成 project.projectDir 会找不到文件。
+def modDir = rootProject.projectDir
+def liteDescriptorDir = new File(modDir, 'lite-resources')
+
+if (liteEnabled) {
+    if (!new File(liteDescriptorDir, 'fabric.mod.json').isFile()) {
+        throw new GradleException("缺少 lite 变体的描述文件：${liteDescriptorDir}/fabric.mod.json")
+    }
+
+    tasks.register('liteJar', Jar) { Jar t ->
+        t.group = 'build'
+        t.description = '「打歌 only」变体：phimcplayer-<MC>.jar（mod id = phimcplayer，入口 PhiMCLiteClient）'
+        // 必须等完整版 remap 完：lite 的 class 是从那个 jar 里原样取的
+        t.dependsOn tasks.named('remapJar')
+        t.archiveBaseName = 'phimcplayer'
+        t.archiveVersion = mcVersion
+        t.destinationDirectory = layout.buildDirectory.dir('libs')
+
+        // 完整版 jar 的全部内容（已 remap），只剔掉「描述文件」和 manifest（Jar 任务自己生成）
+        def completeJar = tasks.named('remapJar').flatMap { it.archiveFile }
+        t.from(completeJar.map { zipTree(it) }) {
+            exclude 'META-INF/MANIFEST.MF'
+            exclude 'fabric.mod.json'
+        }
+        // 换成 lite 的那一份（占位符与完整版同一套：mod_version / mc_dep / java_dep）
+        t.from(new File(liteDescriptorDir, 'fabric.mod.json')) {
+            expand(
+                'mod_version': modVersion,
+                'mc_dep': mcDep,
+                'java_dep': javaDep
+            )
+        }
+    }
+
+    // 打到 mod/dist/（用户拿成品的地方）；用 Copy 而不是 doLast，
+    // 这样 dist 里的 jar 被删掉后重跑 build 会重新复制（up-to-date 检查覆盖到输出目录）
+    tasks.register('liteDist', Copy) {
+        dependsOn tasks.named('liteJar')
+        from tasks.named('liteJar').flatMap { it.archiveFile }
+        into new File(modDir, 'dist')
+    }
+
+    tasks.named('assemble') {
+        dependsOn tasks.named('liteJar'), tasks.named('liteDist')
+    }
+
+    logger.lifecycle("[phimc] lite 变体已启用（${mcVersion}）：assemble 会额外产出 phimcplayer-${mcVersion}.jar")
+}
+

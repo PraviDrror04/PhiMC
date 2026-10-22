@@ -190,8 +190,32 @@ public final class Profile {
      * @return {@code true} 表示这次真的把旧版全局进度迁进了这个世界（调用方据此迁移 records.tsv）
      */
     public synchronized boolean attachWorld(Path worldProfileFile) {
+        return attachWorld(worldProfileFile, true);
+    }
+
+    /**
+     * {@link #attachWorld(Path)} 的完整版：可以<b>关掉旧版进度迁移</b>。
+     *
+     * <p>为什么需要：多人服务器 / 打歌 only 的本地目录（{@code config/phimc/servers/<地址>/}，
+     * 见 {@code client/ServerStore}）都是「新出现的世界」，而旧版单文件进度只应该被
+     * <b>一个人自己的存档</b>认领。若这里也允许迁移，第一个进过的服务器会把旧存档的解锁 / 成绩
+     * 吃走，并且把 {@code progressMigrated} 永久置位，之后就再也迁不回真正的存档了。
+     * 所以服务器一律 {@code migrateLegacy = false}：从零开始，不碰全局文件里的旧内容。
+     *
+     * @param migrateLegacy {@code false} = 该目录的文件还不存在时用空进度开始（并清掉从全局
+     *                      兜底读出来的 A 类内容），绝不认领旧版单文件进度
+     */
+    public synchronized boolean attachWorld(Path worldProfileFile, boolean migrateLegacy) {
         this.worldFile = worldProfileFile;
         load();
+        if (!migrateLegacy) {
+            if (worldFile != null && !Files.isRegularFile(worldFile)) {
+                // load() 在「文件不存在且还没迁移过」时会从全局兜底读 A 类，这里必须清掉：
+                // 服务器目录的进度只能是它自己的
+                clearProgress();
+            }
+            return false;
+        }
         if (worldFile == null || Files.isRegularFile(worldFile)) {
             // 已经切过去了（或参数是 null）：load() 已经把该读的读进来，没有迁移可做
             return false;
@@ -497,8 +521,13 @@ public final class Profile {
     /** 全局文件：B 类 + 迁移标记。 */
     private void saveGlobal() {
         if (globalFile == null) return;
-        // 还没迁移、也没有世界：保留文件里已有的 A 类/未知字段（主菜单的只读兜底不能被设置写盘冲掉）
-        JsonObject o = (worldFile == null && !progressMigrated) ? readObject(globalFile) : null;
+        // 还没迁移：保留文件里已有的 A 类 / 未知字段（主菜单的只读兜底不能被设置写盘冲掉）。
+        //
+        // 这里刻意**不**再要求 `worldFile == null`：多人服务器 / 打歌 only 的进度文件
+        // （config/phimc/servers/<地址>/profile.json）是「不认领旧进度」的那条路
+        // （见 attachWorld(file,false)），旧版单文件里的 A 类内容这时还没被任何存档认领，
+        // 如果因为「有 worldFile 了」就把它丢掉，用户先打一局多人、旧进度就永久没了。
+        JsonObject o = !progressMigrated ? readObject(globalFile) : null;
         if (o == null) o = new JsonObject();
         o.addProperty("useKeyboard", useKeyboard);
         o.addProperty("autoplay", autoplay);

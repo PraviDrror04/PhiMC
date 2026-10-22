@@ -86,8 +86,10 @@ import java.util.function.Supplier;
  * 两个 JSON 本身也是合法战利品表，{@code /loot give @s loot phimc:chests/chart_chip}
  * 可以直接拿来测。
  *
- * <p><b>多人限制</b>：和本 mod 其他物品一样只在客户端注册，所以注入/赋谱只在单人游戏
- * （集成服务端同进程）里生效；专用服务器没有这个 mod，自然也不会有芯片。
+ * <p><b>双端</b>：本类由 {@code PhiMCMod}（{@code "main"} 入口）在客户端与专用服务端各注册一次，
+ * 所以服主开的服里箱子真的有芯片、真的会赋谱。候选集来源是 {@code ChartPool}：
+ * 客户端 = {@code Session.chartIds()}，专用服务端 = 启动时扫 {@code config/phimc/songs} 的快照
+ * （见 {@code ChartPool} 的类注释）。本类不引用任何 {@code net.minecraft.client.*}。
  */
 public final class ChipLoot {
 
@@ -116,7 +118,7 @@ public final class ChipLoot {
             "bastion_treasure"
     );
 
-    /** 谱面候选集（由 {@code PhiMCRegistry} 注入 = {@code Session.chartIds()}）。 */
+    /** 谱面候选集（由 {@code PhiMCRegistry} 注入 = {@code ChartPool.ids()}）。 */
     private static Supplier<List<String>> chartIds = List::of;
 
     private ChipLoot() {
@@ -125,7 +127,8 @@ public final class ChipLoot {
     /**
      * 注册战利品注入 + 开箱赋谱钩子。只能调一次（{@code PhiMCRegistry.register()} 里调）。
      *
-     * @param ids 谱面 id 候选集（延迟求值：注册时 {@code Session} 还没建好）
+     * @param ids 谱面 id 候选集（延迟求值：注册时客户端 {@code Session} 还没建好，
+     *            专用服务端的扫描也还没发生 —— 两边随后都会把来源装进 {@code ChartPool}）
      */
     public static void init(Supplier<List<String>> ids) {
         chartIds = ids == null ? List::of : ids;
@@ -163,9 +166,18 @@ public final class ChipLoot {
     private static void inject(Identifier id, LootTable.Builder builder, LootTableSource source) {
         if (source != LootTableSource.VANILLA) return;          // 只改原版表，不碰数据包/别的 mod
         if (!"minecraft".equals(id.getNamespace()) || !id.getPath().startsWith("chests/")) return;
+        // 试炼场（1.21+）：箱子/木桶的战利品表结构特殊（含 vault 与 ominous 分支），
+        // 先不动它们——避免因为追加池把整张表搞坏（玩家反馈「箱子空、木桶正常」）。
+        if (id.getPath().startsWith("chests/trial_chambers")) {
+            LOG.info("[PhiMC] 跳过试炼场战利品表 {}", id);
+            return;
+        }
         Identifier table = RICH_CHESTS.contains(id.getPath().substring("chests/".length()))
                 ? RARE_TABLE
                 : COMMON_TABLE;
+        // 诊断：出厂版保留，方便玩家回报「某个结构的箱子没有芯片」时定位是哪张表没挂上
+        LOG.info("[PhiMC] 已注入战利品表 {} -> {}", id,
+                table.equals(RARE_TABLE) ? "稀有(1/2)" : "普通(1/4)");
         builder.pool(LootPool.builder()
                 .rolls(ConstantLootNumberProvider.create(1))
                 //? if >=1.20.5 {

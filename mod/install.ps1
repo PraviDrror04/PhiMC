@@ -1,4 +1,4 @@
-﻿# PhiMC 一键安装：按实例的 MC 版本装对应 jar + 从 Phigros XAPK 导入曲目
+# PhiMC 一键安装：按实例的 MC 版本装对应 jar + 从 Phigros XAPK 导入曲目
 #
 # 用法：
 #   .\install.ps1                                   # 自动找 .minecraft，按 versions\ 里最新实例的 MC 版本选 jar
@@ -118,6 +118,12 @@ Get-ChildItem $modsDir -Filter "phimc-*.jar" -ErrorAction SilentlyContinue | For
 }
 Copy-Item $jar $modsDir -Force
 Write-Host "已安装 mod -> mods\phimc-$McVersion.jar（Minecraft $McVersion）" -ForegroundColor Green
+# 打歌 only 变体（phimcplayer-*.jar）与完整版**只能二选一**：两个 jar 的 class 名完全重复，
+# 同时装 loader 会报错（lite 的 fabric.mod.json 里也写了 breaks: phimc）。
+Get-ChildItem $modsDir -Filter "phimcplayer-*.jar" -ErrorAction SilentlyContinue | ForEach-Object {
+    Remove-Item $_.FullName -Force
+    Write-Host "删除打歌 only 变体（与完整版二选一）: $($_.Name)" -ForegroundColor Yellow
+}
 
 $apiName = $FabricApi[$McVersion]
 if ((Test-Path $api) -and -not (Test-Path (Join-Path $modsDir $apiName))) {

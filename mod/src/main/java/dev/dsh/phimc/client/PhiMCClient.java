@@ -1,8 +1,10 @@
 package dev.dsh.phimc.client;
 
-import dev.dsh.phimc.PhiMCRegistry;
+import dev.dsh.phimc.ChartPool;
+import dev.dsh.phimc.ItemHooks;
 import dev.dsh.phimc.client.respack.ResPack;
 import dev.dsh.phimc.survival.Profile;
+import dev.dsh.phimc.survival.SurvivalEnv;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -19,9 +21,20 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 
 /**
- * 客户端入口。
+ * 客户端入口（{@code fabric.mod.json} 的 {@code "client"} 入口，专用服务端不加载）。
  *
- * <p>入口已改为「物品右键 → 选曲界面」，键位只保留一个 P 用来随时打开选曲。
+ * <h2>入口拆分（双端模组）</h2>
+ * 物品 / 打击音 / 创造页签 / 芯片战利品 / 大肥鱼彩蛋这些「纯服务端也需要的注册」
+ * 已经挪到 {@code PhiMCMod}（{@code "main"} 入口），所以这里<b>不再</b>调
+ * {@code PhiMCRegistry.register()}。这里只留客户端专属：
+ * <ul>
+ *   <li>配置目录迁移 + {@link Session}（曲库 / 音频 / 玩法进度）；</li>
+ *   <li>键位（P）、HUD、Screen、材质包、在线库；</li>
+ *   <li>把客户端专属的「能力」装给双端代码：{@link ItemHooks}（物品右键动作）、
+ *       {@link SurvivalEnv#installLocalPlayer}（本机玩家 → 集成服务端玩家）、
+ *       {@link ChartPool#setSource}（开箱赋谱的候选集）。</li>
+ * </ul>
+ * 客户端行为与改造前一致：键位、HUD、曲库、结算、奖励发放、开箱、在线库都是原路径。
  */
 public final class PhiMCClient implements ClientModInitializer {
 
@@ -34,7 +47,10 @@ public final class PhiMCClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        PhiMCRegistry.register();
+        // 双端「能力」安装 ①：物品右键的客户端动作（物品类本身零客户端依赖，见 ItemHooks）
+        ItemHooks.install(new ClientItemActions());
+        // 双端「能力」安装 ②：「本机玩家」→ 集成服务端玩家（SurvivalEnv 不能碰 MinecraftClient）
+        SurvivalEnv.installLocalPlayer(new ClientLocalPlayer());
 
         // 配置目录 = config/<mod id>。老用户改名前的 config 目录在这里一次性搬过来
         // （songs/ + profile.json + respack/ + records.tsv 一起走，规则见 ConfigDir）。
@@ -48,6 +64,8 @@ public final class PhiMCClient implements ClientModInitializer {
         }
         Path songsDir = ConfigDir.modDir(configRoot).resolve("songs");
         session = new Session(songsDir);
+        // 双端「能力」安装 ③：开箱赋谱的候选集 = 客户端曲库（动态来源，rescan 后立刻生效）
+        ChartPool.setSource(session::chartIds);
         // 进/退世界时把玩法进度切到 saves/<世界名>/phimc/（见 WorldHooks / WorldStore）
         WorldHooks.register(session);
         LOG.info("[PhiMC] 谱面目录: {}（找到 {} 首）", songsDir, session.songs().size());
@@ -132,8 +150,13 @@ public final class PhiMCClient implements ClientModInitializer {
      *
      * <p><b>解锁按生存规则</b>（{@code unlockAll = false}）：只有 {@code profile.isUnlocked}
      * 的谱面能开始 —— 与谱面播放器那条入口的区别就在这里。
+     *
+     * <p><b>打歌 only 变体里这个方法不可达</b>（没有平板物品，也就没有右键）；
+     * 这里再挡一道是为了「入口层断开」这条硬要求：那个变体里
+     * {@code PhiMCRegistry.TABLET} 是 {@code null}，任何物品链路进来都会 NPE。
      */
     public static void openTablet() {
+        if (dev.dsh.phimc.PhiMC.onlyMode) return;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null) return;
         mc.execute(() -> mc.setScreen(new SongSelectScreen(TabletScreen::new)));
@@ -212,6 +235,20 @@ public final class PhiMCClient implements ClientModInitializer {
 
     public static Session session() {
         return session;
+    }
+
+    /**
+     * 把 Session 装进这个静态槽位 —— <b>只给 {@code phimcplayer}（打歌 only）入口用</b>。
+     *
+     * <p>为什么需要：全套界面（{@code SongSelectScreen} / {@code PlayScreen} /
+     * {@code SettingsScreen}）都读 {@link #session()}。lite 变体为了「别重写整个客户端」，
+     * 启动时自己建一份 {@link Session}（不注册物品、只注册打击音），然后<b>共享</b>这个槽位，
+     * 这样界面代码一行都不用复制。
+     *
+     * <p>完整版入口不调用它（{@link #onInitializeClient()} 里自己建），所以行为不变。
+     */
+    public static void installSession(Session shared) {
+        session = shared;
     }
 
     @SuppressWarnings("unused")

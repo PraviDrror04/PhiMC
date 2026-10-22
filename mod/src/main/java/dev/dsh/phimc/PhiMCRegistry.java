@@ -19,19 +19,27 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 
 /**
- * 物品与创造模式页签的注册。纯客户端 mod，只在客户端注册。
+ * 物品与创造模式页签的注册。<b>双端</b>：由 {@code PhiMCMod}（{@code "main"} 入口）在
+ * 客户端与专用服务端各调一次，所以服主开的服里也有同一批物品 / 配方 / 战利品。
  *
- * <p><b>多人限制</b>：因为只在 {@code ClientModInitializer} 里注册，专用服务器
- * 没有这些物品，多人游戏里物品不会被服务端识别/发送。单人游戏
- * （集成服务端与客户端同进程）可以正常合成、右键、扣物品。
+ * <p>调用顺序：{@code PhiMCMod.onInitialize()} → {@link #register()}。客户端入口
+ * （{@code PhiMCClient}）<b>不再</b>调用它，避免重复注册；{@link #register()} 自身也做了
+ * 幂等保护。「打歌 only」变体（{@code phimcplayer}）的入口只调
+ * {@link #registerHitSounds()}，物品永远不进注册表（见 {@code PhiMCLiteClient} 的说明）。
  *
  * <p>芯片相关的两个物品（{@code blank_chip} / {@code chart_chip}）都在这里注册，
  * 顺便把 {@link ChipLoot}（原版箱子战利品注入 + 打开箱子那一刻赋谱）挂上 ——
  * 它要在任何世界加载数据包**之前**注册好监听器，所以放在 {@link #register()} 里。
+ * 候选集来源是 {@code ChartPool}：客户端装 {@code Session::chartIds}，专用服务端装
+ * 启动时扫出来的快照（见 {@code ChartPool} 的类注释）。
  *
  * <p>两个彩蛋物品（{@code big_fish} / {@code phira}，拍视频用）也在这里注册；它们的
  * 融合逻辑不挂在物品上，而是服务端 tick 扫描（{@link FusionEgg}），同一次 {@code register()}
  * 里挂好监听器。
+ *
+ * <p><b>本类零客户端依赖</b>：物品类本身也已经去掉 {@code MinecraftClient}（客户端动作走
+ * {@code ItemHooks}），所以 {@code javap} 在本类的常量池里看不到
+ * {@code net/minecraft/client/}。
  */
 public final class PhiMCRegistry {
 
@@ -71,12 +79,13 @@ public final class PhiMCRegistry {
     }
 
     public static void register() {
+        // 幂等：客户端入口改造前也会调这里（现在是 PhiMCMod 的 main 入口统一调），
+        // 再兜一层 —— Registry.register 同一个 id 注册两次会抛异常。
+        if (CHART_PLAYER != null) return;
         CHART_PLAYER = registerItem("chart_player", ChartPlayerItem::new, new Item.Settings().maxCount(1));
 
         // 打击音：id 与 sounds.json 的键一一对应（phimc:hit_click 等）
-        HIT_CLICK = registerSound("hit_click");
-        HIT_DRAG = registerSound("hit_drag");
-        HIT_FLICK = registerSound("hit_flick");
+        registerHitSounds();
 
         // 平板：不可堆叠（maxCount(1)），耐久 200（每首 −1 的扣减属于 S4）
         TABLET = registerItem("tablet", TabletItem::new,
@@ -110,11 +119,9 @@ public final class PhiMCRegistry {
                         .build());
 
         // 芯片战利品：把芯片挂到原版 chests/* 上 + 打开箱子那一刻赋谱（见 ChipLoot 的类注释）。
-        // 谱面候选集延迟求值：此刻 Session 还没建好。
-        ChipLoot.init(() -> {
-            dev.dsh.phimc.client.Session session = dev.dsh.phimc.client.PhiMCClient.session();
-            return session == null ? java.util.List.<String>of() : session.chartIds();
-        });
+        // 候选集延迟求值：客户端此刻 Session 还没建好（客户端入口随后装 ChartPool 的来源），
+        // 专用服务端则由 ChartPool.scanServer() 在服务端启动时装好快照。
+        ChipLoot.init(ChartPool::ids);
 
         // 彩蛋：大肥鱼 + Phira 掉在一处 → 闪电 + 融合成谱面播放器（见 FusionEgg 的类注释）。
         // 这里只挂服务端 tick 监听；物品注册必须已经完成（FusionEgg 会读 BIG_FISH / PHIRA）。
@@ -123,7 +130,24 @@ public final class PhiMCRegistry {
         org.slf4j.LoggerFactory.getLogger("phimc").info(
                 "[PhiMC] 已注册物品 phimc:chart_player / phimc:tablet / "
                         + "phimc:blank_chip / phimc:chart_chip / "
-                        + "phimc:big_fish / phimc:phira 与创造页签 phimc:main");
+                        + "phimc:big_fish / phimc:phira 与创造页签 phimc:main（客户端 / 专用服务端通用）");
+    }
+
+    /**
+     * 只注册 3 个打击音 {@link SoundEvent}（{@code phimc:hit_click} / {@code hit_drag} / {@code hit_flick}）。
+     *
+     * <p><b>给谁用</b>：{@code phimcplayer}（打歌 only）变体的入口。那个变体一个物品都不注册
+     * （见 {@code PhiMCLiteClient} 的类注释），但打击音是「听得见节奏」的必需品，而它只是
+     * {@code Registries.SOUND_EVENT} 里的一条记录（不落到世界、不需要服务端），所以单独开一个口子。
+     *
+     * <p>幂等：{@link #register()} 已经调过一次时再调不会重复注册（{@code Registry.register}
+     * 同一个 id 注册两次会抛异常），直接返回。
+     */
+    public static void registerHitSounds() {
+        if (HIT_CLICK != null) return;
+        HIT_CLICK = registerSound("hit_click");
+        HIT_DRAG = registerSound("hit_drag");
+        HIT_FLICK = registerSound("hit_flick");
     }
 
     /**

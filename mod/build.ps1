@@ -1,4 +1,4 @@
-﻿# 构建 PhiMC 的多版本 Fabric jar（1.20 ~ 1.21.11 全系，共 19 个）。
+# 构建 PhiMC 的多版本 Fabric jar（1.20 ~ 1.21.11 全系，共 19 个）+ 打歌 only 变体（先只 1.21.1）。
 #
 # 为什么需要这个脚本：
 #   1) Gradle 在「路径含中文」时加载 native-platform.dll 会失败，
@@ -55,6 +55,12 @@ foreach ($v in $Versions) {
     }
     Copy-Item $jar "$here\dist\" -Force
     Write-Host ("产物: {0} ({1:N0} KB)" -f (Split-Path $jar -Leaf), ((Get-Item $jar).Length / 1KB)) -ForegroundColor Green
+    # 打歌 only 变体（构建变体）目前只在 1.21.1 节点产出：phimcplayer-<MC>.jar
+    $liteJar = Join-Path $libs "phimcplayer-$v.jar"
+    if (Test-Path $liteJar) {
+        Copy-Item $liteJar "$here\dist\" -Force
+        Write-Host ("产物: {0} ({1:N0} KB, 打歌 only / 与完整版二选一)" -f (Split-Path $liteJar -Leaf), ((Get-Item $liteJar).Length / 1KB)) -ForegroundColor Green
+    }
 }
 
 if ($failed.Count -gt 0) { exit 1 }

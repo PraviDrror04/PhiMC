@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "phimcplayer",
+  "version": "${mod_version}",
+  "name": "PhiMC Player",
+  "description": "PhiMC 打歌版（纯客户端）：按 V 打开曲库，选歌、打歌，成绩保存在本地。不注册任何物品、不读配方/战利品、不发奖励、不碰世界。与完整版 phimc 二选一安装。",
+  "authors": ["nomine23"],
+  "license": "MIT",
+  "icon": "assets/phimc/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.dsh.phimc.client.PhiMCLiteClient"]
+  },
+  "breaks": {
+    "phimc": "*"
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "${mc_dep}",
+    "java": "${java_dep}",
+    "fabric-api": "*"
+  }
+}

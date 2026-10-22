@@ -1,11 +1,11 @@
 ﻿# 版式核对：选曲界面「在线」页签（Phira）
 #
 # 和 tools/ui/select-layout.ps1 同一个套路：常量 / 算式与
-# mod 的 client/SongSelectScreen.java 一一对应（TAB_* / SEARCH_* / ONLINE_* / downloadX …）。
+# mod 的 client/SongSelectScreen.java 一一对应（TAB_* / SEARCH_* / ONLINE_* / downloadX / DISCLAIM_* …）。
 # 做两件事：
 #   1) 按 1280×720 / 854×480 算一遍在线页坐标，打印坐标表，并断言
-#      「页签 / 副标题 / 搜索栏 / 列表 / 状态行 / 版权行 / 底部按钮 / 行内下载按钮」互不重叠
-#      （断言失败 → 退出码 1）；
+#      「页签 / 副标题 / 搜索栏 / 列表 / 状态行 / 版权行 / 底部按钮 / 行内下载按钮 /
+#       页脚「非官方同人项目」声明条」互不重叠，且声明文字不被裁掉（断言失败 → 退出码 1）；
 #   2) 画两张 PNG 预览到 C:\dsh-work\ui-check\（不进仓库）。
 #
 # 用法：powershell -NoProfile -ExecutionPolicy Bypass -File tools/ui/online-layout.ps1
@@ -13,6 +13,18 @@ Add-Type -AssemblyName System.Drawing
 
 $OUT_DIR = "C:\dsh-work\ui-check"
 New-Item -ItemType Directory -Force -Path $OUT_DIR | Out-Null
+
+# ---------------- 页脚声明（和选曲界面 / 设置页同一句） ----------------
+$DISCLAIM_ZH = "非官方同人项目 · 与鸽游（Pigeon Games）及《Phigros》官方无授权、合作或运营关系"
+$DISCLAIM_EN = "Unofficial fan project. Not affiliated with, endorsed by, or operated by Pigeon Games or Phigros."
+function Get-McTextWidth([string]$s) {
+  $w = 0
+  foreach ($ch in $s.ToCharArray()) {
+    $code = [int]$ch
+    if ($code -gt 0x2E80) { $w += 9 } elseif ($code -eq 32) { $w += 4 } else { $w += 6 }
+  }
+  return $w
+}
 
 # ---------------- 常量（与 SongSelectScreen 一一对应） ----------------
 $PAD        = 12
@@ -36,6 +48,7 @@ $COPY_W     = 56
 $COPY_H     = 16
 $BTN_W      = 70
 $AUTO_W     = 100
+$DISCLAIM_H = 13          # 页脚「非官方同人项目」声明条（SongSelectScreen.DISCLAIM_H）
 
 $fails = 0
 function Check($ok, $what) {
@@ -54,12 +67,17 @@ function Get-Geometry([int]$W, [int]$H) {
   $orderX  = $searchX + $SEARCH_BTN + $BTN_GAP
   $stableX = $orderX + $ORDER_BTN + $BTN_GAP
   $listTop = $searchY + $SEARCH_H + $LIST_GAP
-  $lBottom = $H - $BOTTOM_H - 4
+  $lBottom = $H - $BOTTOM_H - 4 - $DISCLAIM_H
   $per     = [Math]::Max(1, [Math]::Min($PAGE_MAX, [Math]::Floor(($lBottom - $NOTICE_H - $listTop) / $ROW_STEP)))
   $lastRowBottom = $listTop + ($per - 1) * $ROW_STEP + $ROW_H
   $statusY = $lBottom - $NOTICE_H + 2
   $legalY  = $statusY + 11
-  $bY      = $H - $BOTTOM_H
+  $bY      = $H - $BOTTOM_H - $DISCLAIM_H
+  $disclaimY     = $H - $DISCLAIM_H
+  $disclaimTextY = $disclaimY + [Math]::Floor(($DISCLAIM_H - 9) / 2)
+  $disclaimW     = Get-McTextWidth $DISCLAIM_ZH
+  $disclaimWEn   = Get-McTextWidth $DISCLAIM_EN
+  $disclaimAvail = $W - 2 * $PAD
   $dlX     = $W - $PAD - 4 - $COPY_W
   $textRight = $dlX - 8
   $thumbX  = $PAD + 4
@@ -90,6 +108,8 @@ function Get-Geometry([int]$W, [int]$H) {
     searchY = $searchY; fieldW = $fieldW; searchX = $searchX; orderX = $orderX; stableX = $stableX
     listTop = $listTop; lBottom = $lBottom; per = $per; lastRowBottom = $lastRowBottom
     statusY = $statusY; legalY = $legalY; bY = $bY
+    disclaimY = $disclaimY; disclaimTextY = $disclaimTextY
+    disclaimW = $disclaimW; disclaimWEn = $disclaimWEn; disclaimAvail = $disclaimAvail
     dlX = $dlX; textRight = $textRight; thumbX = $thumbX; textX = $textX
     subX = $subX; subW = $subW
     bw = $bw; autoW = $autoW
@@ -107,6 +127,8 @@ function Assert-Geometry($g) {
   Write-Output ("    下载槽位 x={0}..{1}  文字右边界 {2}  缩略图 x={3}..{4}  文字 x={5} 起" -f `
     $g.dlX, ($g.dlX + $COPY_W), $g.textRight, $g.thumbX, ($g.thumbX + $THUMB), $g.textX)
   Write-Output ("    副标题 x={0} 宽 {1}" -f $g.subX, $g.subW)
+  Write-Output ("    页脚声明条 y={0}..{1}  文字 y={2}  估宽 中 {3}px 英 {4}px（可用 {5}px）" -f `
+    $g.disclaimY, ($g.disclaimY + $DISCLAIM_H), $g.disclaimTextY, $g.disclaimW, $g.disclaimWEn, $g.disclaimAvail)
 
   Check ($g.tabsEnd -lt $g.subX) ("页签右边界 {0} < 副标题左 {1}" -f $g.tabsEnd, $g.subX)
   Check ($g.searchY -gt ($g.tabY + $TAB_H - 1)) ("搜索栏在页签下面（{0} > {1}）" -f $g.searchY, ($g.tabY + $TAB_H))
@@ -122,6 +144,14 @@ function Assert-Geometry($g) {
   Check ($g.per -ge 1 -and $g.per -le $PAGE_MAX) ("每页行数在 1..{0}" -f $PAGE_MAX)
   Check ($g.listTop -lt $g.lBottom) "列表有正高度"
   Check (($g.xNext + $g.bw) -le ($W - $PAD + 1)) ("底部按钮不溢出（右 {0}）" -f ($g.xNext + $g.bw))
+  # 页脚声明条：贴屏幕底、在底部按钮下面、文字整行在条内、中英文估宽都放得下
+  Check (($g.disclaimY + $DISCLAIM_H) -eq $H) ("声明条底 {0} 贴住屏幕底 {1}" -f ($g.disclaimY + $DISCLAIM_H), $H)
+  Check ($g.bY + 20 -le $g.disclaimY) ("底部按钮底 {0} <= 声明条顶 {1}" -f ($g.bY + 20), $g.disclaimY)
+  Check ($g.disclaimTextY -ge $g.disclaimY) ("声明文字顶 {0} 在条内（条顶 {1}）" -f $g.disclaimTextY, $g.disclaimY)
+  Check (($g.disclaimTextY + 9) -le $H) ("声明文字底 {0} <= 屏幕高 {1}" -f ($g.disclaimTextY + 9), $H)
+  Check ($g.disclaimTextY -ge $g.bY + 20) ("声明文字不压底部按钮（{0} vs {1}）" -f $g.disclaimTextY, ($g.bY + 20))
+  Check ($g.disclaimW -le $g.disclaimAvail) ("声明中文估宽 {0} <= 内容区 {1}" -f $g.disclaimW, $g.disclaimAvail)
+  Check ($g.disclaimWEn -le $g.disclaimAvail) ("声明英文估宽 {0} <= 内容区 {1}" -f $g.disclaimWEn, $g.disclaimAvail)
 }
 
 function Draw-Online($g, [string]$outPath) {
@@ -237,6 +267,13 @@ function Draw-Online($g, [string]$outPath) {
     $gr.DrawRectangle($pen, [float]$b.x, [float]$g.bY, [float]$b.w, [float]20)
     $gr.DrawString($b.label, $fSmall, $(if ($b.on) { $brWhite } else { $brGray }), [float]($b.x + $b.w/2), [float]($g.bY+5), $sfC)
   }
+
+  # 页脚「非官方同人项目」声明条（两个页签都常驻）
+  $gr.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(102, 0, 0, 0))),
+                    [float]0, [float]$g.disclaimY, [float]$W, [float]$DISCLAIM_H)
+  $brDisclaim = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,154,160,168))
+  $dw = $gr.MeasureString($DISCLAIM_ZH, $fSmall).Width
+  $gr.DrawString($DISCLAIM_ZH, $fSmall, $brDisclaim, [float](($W - $dw) / 2), [float]($g.disclaimTextY - 2))
 
   # 边界线：红=搜索栏底 / 绿=列表底 / 黄=状态行 / 蓝=底部按钮顶
   $gr.DrawLine((New-Object System.Drawing.Pen([System.Drawing.Color]::Red)), 0, [float]($g.searchY + $SEARCH_H), [float]$W, [float]($g.searchY + $SEARCH_H))

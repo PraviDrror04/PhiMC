@@ -12,17 +12,21 @@ namespace PhiMCSetup
 {
     public class SetupForm : Form
     {
-        /// <summary>一个受支持的 MC 版本 = 一个内嵌 mod jar + 一个对应版本的 Fabric API。</summary>
+        /// <summary>
+        /// 一个受支持的 MC 版本 = 两个互斥的 mod jar（完整版 / 打歌版）+ 一个对应版本的 Fabric API。
+        /// </summary>
         private sealed class ModVariant
         {
             public readonly string Mc;            // "1.21.1"
-            public readonly string JarName;        // 内嵌资源名 = mods/ 里的文件名
-            public readonly string FabricApiName;  // 同上，Fabric API
+            public readonly string JarName;       // 完整版：内嵌资源名 = mods/ 里的文件名（phimc-&lt;MC&gt;.jar）
+            public readonly string LiteJarName;   // 打歌版：同上（phimcplayer-&lt;MC&gt;.jar）
+            public readonly string FabricApiName; // 同上，Fabric API（两种版本共用同一个 Fabric API）
 
-            public ModVariant(string mc, string jar, string api)
+            public ModVariant(string mc, string jar, string lite, string api)
             {
                 Mc = mc;
                 JarName = jar;
+                LiteJarName = lite;
                 FabricApiName = api;
             }
         }
@@ -30,33 +34,37 @@ namespace PhiMCSetup
         /// <summary>
         /// 支持版本表。内嵌资源名（csc /resource:路径,名字）就是这里的名字，也就是装进 mods/ 的文件名。
         /// 新增一个版本：这里加一行 + setup/build-setup.ps1 的 $Variants 加一行（脚本会校验两边一致）。
+        /// 两种版本「二选一」：完整版 mod id = phimc，打歌版 mod id = phimcplayer，class 重复不能共存。
         /// </summary>
         private static readonly ModVariant[] Variants = new ModVariant[]
         {
-            new ModVariant("1.20",    "phimc-1.20.jar",    "fabric-api-0.83.0+1.20.jar"),
-            new ModVariant("1.20.1",  "phimc-1.20.1.jar",  "fabric-api-0.92.12+1.20.1.jar"),
-            new ModVariant("1.20.2",  "phimc-1.20.2.jar",  "fabric-api-0.91.6+1.20.2.jar"),
-            new ModVariant("1.20.3",  "phimc-1.20.3.jar",  "fabric-api-0.91.1+1.20.3.jar"),
-            new ModVariant("1.20.4",  "phimc-1.20.4.jar",  "fabric-api-0.97.3+1.20.4.jar"),
-            new ModVariant("1.20.5",  "phimc-1.20.5.jar",  "fabric-api-0.97.8+1.20.5.jar"),
-            new ModVariant("1.20.6",  "phimc-1.20.6.jar",  "fabric-api-0.100.8+1.20.6.jar"),
-            new ModVariant("1.21",    "phimc-1.21.jar",    "fabric-api-0.102.0+1.21.jar"),
-            new ModVariant("1.21.1",  "phimc-1.21.1.jar",  "fabric-api-0.116.17+1.21.1.jar"),
-            new ModVariant("1.21.2",  "phimc-1.21.2.jar",  "fabric-api-0.106.1+1.21.2.jar"),
-            new ModVariant("1.21.3",  "phimc-1.21.3.jar",  "fabric-api-0.114.1+1.21.3.jar"),
-            new ModVariant("1.21.4",  "phimc-1.21.4.jar",  "fabric-api-0.119.4+1.21.4.jar"),
-            new ModVariant("1.21.5",  "phimc-1.21.5.jar",  "fabric-api-0.128.2+1.21.5.jar"),
-            new ModVariant("1.21.6",  "phimc-1.21.6.jar",  "fabric-api-0.128.2+1.21.6.jar"),
-            new ModVariant("1.21.7",  "phimc-1.21.7.jar",  "fabric-api-0.129.0+1.21.7.jar"),
-            new ModVariant("1.21.8",  "phimc-1.21.8.jar",  "fabric-api-0.136.1+1.21.8.jar"),
-            new ModVariant("1.21.9",  "phimc-1.21.9.jar",  "fabric-api-0.134.1+1.21.9.jar"),
-            new ModVariant("1.21.10", "phimc-1.21.10.jar", "fabric-api-0.138.4+1.21.10.jar"),
-            new ModVariant("1.21.11", "phimc-1.21.11.jar", "fabric-api-0.141.6+1.21.11.jar")
+            new ModVariant("1.20",    "phimc-1.20.jar",    "phimcplayer-1.20.jar",    "fabric-api-0.83.0+1.20.jar"),
+            new ModVariant("1.20.1",  "phimc-1.20.1.jar",  "phimcplayer-1.20.1.jar",  "fabric-api-0.92.12+1.20.1.jar"),
+            new ModVariant("1.20.2",  "phimc-1.20.2.jar",  "phimcplayer-1.20.2.jar",  "fabric-api-0.91.6+1.20.2.jar"),
+            new ModVariant("1.20.3",  "phimc-1.20.3.jar",  "phimcplayer-1.20.3.jar",  "fabric-api-0.91.1+1.20.3.jar"),
+            new ModVariant("1.20.4",  "phimc-1.20.4.jar",  "phimcplayer-1.20.4.jar",  "fabric-api-0.97.3+1.20.4.jar"),
+            new ModVariant("1.20.5",  "phimc-1.20.5.jar",  "phimcplayer-1.20.5.jar",  "fabric-api-0.97.8+1.20.5.jar"),
+            new ModVariant("1.20.6",  "phimc-1.20.6.jar",  "phimcplayer-1.20.6.jar",  "fabric-api-0.100.8+1.20.6.jar"),
+            new ModVariant("1.21",    "phimc-1.21.jar",    "phimcplayer-1.21.jar",    "fabric-api-0.102.0+1.21.jar"),
+            new ModVariant("1.21.1",  "phimc-1.21.1.jar",  "phimcplayer-1.21.1.jar",  "fabric-api-0.116.17+1.21.1.jar"),
+            new ModVariant("1.21.2",  "phimc-1.21.2.jar",  "phimcplayer-1.21.2.jar",  "fabric-api-0.106.1+1.21.2.jar"),
+            new ModVariant("1.21.3",  "phimc-1.21.3.jar",  "phimcplayer-1.21.3.jar",  "fabric-api-0.114.1+1.21.3.jar"),
+            new ModVariant("1.21.4",  "phimc-1.21.4.jar",  "phimcplayer-1.21.4.jar",  "fabric-api-0.119.4+1.21.4.jar"),
+            new ModVariant("1.21.5",  "phimc-1.21.5.jar",  "phimcplayer-1.21.5.jar",  "fabric-api-0.128.2+1.21.5.jar"),
+            new ModVariant("1.21.6",  "phimc-1.21.6.jar",  "phimcplayer-1.21.6.jar",  "fabric-api-0.128.2+1.21.6.jar"),
+            new ModVariant("1.21.7",  "phimc-1.21.7.jar",  "phimcplayer-1.21.7.jar",  "fabric-api-0.129.0+1.21.7.jar"),
+            new ModVariant("1.21.8",  "phimc-1.21.8.jar",  "phimcplayer-1.21.8.jar",  "fabric-api-0.136.1+1.21.8.jar"),
+            new ModVariant("1.21.9",  "phimc-1.21.9.jar",  "phimcplayer-1.21.9.jar",  "fabric-api-0.134.1+1.21.9.jar"),
+            new ModVariant("1.21.10", "phimc-1.21.10.jar", "phimcplayer-1.21.10.jar", "fabric-api-0.138.4+1.21.10.jar"),
+            new ModVariant("1.21.11", "phimc-1.21.11.jar", "phimcplayer-1.21.11.jar", "fabric-api-0.141.6+1.21.11.jar")
         };
 
-        /// <summary>mod id（= fabric.mod.json 的 id = 资源命名空间）。</summary>
+        /// <summary>完整版 mod id（= fabric.mod.json 的 id = 资源命名空间）。</summary>
         private const string ModId = "phimc";
         private const string ModJarPrefix = ModId + "-";
+        /// <summary>打歌版 mod id：另一个 mod（另一个 jar、另一个 fabric.mod.json）。</summary>
+        private const string LiteModId = "phimcplayer";
+        private const string LiteJarPrefix = LiteModId + "-";
         private const string ModJarSuffix = ".jar";
 
         // ==================================================================
@@ -84,6 +92,12 @@ namespace PhiMCSetup
         private CheckBox apiBox;
         private CheckBox overwriteBox;
         private CheckBox deleteOldBox;
+        /** 版本类型单选：完整版（phimc）/ 打歌版（phimcplayer），二选一。 */
+        private RadioButton fullRadio;
+        private RadioButton liteRadio;
+        private Label typeHint;
+        /** 构造期控件还没齐：单选切换的回调在界面就绪前不做事。 */
+        private bool uiReady;
         private RichTextBox log;
         private Label dropHint;
         private Label statusLabel;
@@ -114,8 +128,8 @@ namespace PhiMCSetup
         public SetupForm()
         {
             Text = "PhiMC 安装器";
-            ClientSize = new Size(920, 840);
-            MinimumSize = new Size(900, 800);
+            ClientSize = new Size(920, 880);
+            MinimumSize = new Size(900, 840);
             StartPosition = FormStartPosition.CenterScreen;
             AllowDrop = true;
             BackColor = C_BG;
@@ -136,7 +150,7 @@ namespace PhiMCSetup
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));   // 0 标题区
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 128F));  // 1 游戏目录（4 行内容）
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 182F));  // 2 实例列表（工具栏 + 表头 + 4 行）
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112F));  // 3 安装选项（3 行 × 26）
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 168F));  // 3 安装选项（5 行 × 26：版本类型 2 行）
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));   // 4 主按钮行
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));   // 5 资源包说明
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));   // 6 拖入区
@@ -164,7 +178,7 @@ namespace PhiMCSetup
             Label subtitle = new Label();
             subtitle.Text = "在 Minecraft 里玩 Phigros 谱面 · 自带 " + Variants.Length
                 + " 个 MC 版本（" + Variants[0].Mc + " ~ " + Variants[Variants.Length - 1].Mc
-                + "）的 mod + Fabric API";
+                + "）的完整版 / 打歌版 mod + Fabric API（两种版本二选一）";
             subtitle.Font = new Font(UiFamily, 9F);
             subtitle.ForeColor = C_MUTED;
             subtitle.AutoSize = false;
@@ -288,7 +302,7 @@ namespace PhiMCSetup
             instanceList.Columns.Add("实例目录", 320, HorizontalAlignment.Left);
             instanceList.Columns.Add("MC 版本", 90, HorizontalAlignment.Left);
             instanceList.Columns.Add("加载器", 130, HorizontalAlignment.Left);
-            instanceList.Columns.Add("PhiMC", 100, HorizontalAlignment.Left);
+            instanceList.Columns.Add("PhiMC", 160, HorizontalAlignment.Left);
             instanceList.SelectedIndexChanged += delegate { ApplyLayoutForVersion(); };
             instanceList.Resize += delegate { FitInstanceColumns(); };
             instT.Controls.Add(instanceList, 0, 1);
@@ -301,28 +315,46 @@ namespace PhiMCSetup
             TableLayoutPanel optT = new TableLayoutPanel();
             optT.Dock = DockStyle.Fill;
             optT.ColumnCount = 2;
-            optT.RowCount = 3;
+            optT.RowCount = 5;
             optT.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250F));
             optT.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
-            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
-            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
+            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));   // 版本类型：完整版
+            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));   // 版本类型：打歌版
+            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));   // Fabric API
+            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));   // 覆盖
+            optT.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));   // 删旧 jar
             optGroup.Controls.Add(optT);
 
-            apiBox = MakeCheck("装 Fabric API", true);
-            optT.Controls.Add(apiBox, 0, 0);
-            optT.Controls.Add(MakeLabel("mod 依赖它；没有 Fabric API 游戏里什么都不会加载",
+            // 版本类型：单选（两个 RadioButton 同父 = 互斥），默认「完整版」
+            fullRadio = MakeRadio("完整版（默认）", true);
+            optT.Controls.Add(fullRadio, 0, 0);
+            optT.Controls.Add(MakeLabel("物品 · 生存玩法 · 在线曲库 —— 装 phimc-<MC>.jar",
                 8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft), 1, 0);
 
+            liteRadio = MakeRadio("打歌版（PhiMC Player）", false);
+            optT.Controls.Add(liteRadio, 0, 1);
+            typeHint = MakeLabel("只打歌，按 V 打开曲库，成绩存本地，不给任何物品 —— 装 phimcplayer-<MC>.jar",
+                8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft);
+            optT.Controls.Add(typeHint, 1, 1);
+
+            // 切换类型：立即刷新实例列表的「PhiMC」列（完整版已装 / 打歌版已装 / 未装）
+            fullRadio.CheckedChanged += delegate { if (fullRadio.Checked) OnModTypeChanged(); };
+            liteRadio.CheckedChanged += delegate { if (liteRadio.Checked) OnModTypeChanged(); };
+
+            apiBox = MakeCheck("装 Fabric API", true);
+            optT.Controls.Add(apiBox, 0, 2);
+            optT.Controls.Add(MakeLabel("mod 依赖它；没有 Fabric API 游戏里什么都不会加载",
+                8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft), 1, 2);
+
             overwriteBox = MakeCheck("覆盖已存在的 jar", true);
-            optT.Controls.Add(overwriteBox, 0, 1);
+            optT.Controls.Add(overwriteBox, 0, 3);
             optT.Controls.Add(MakeLabel("不勾选时：mods 里已有同名且大小一致的 jar 就跳过（不重写）",
-                8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft), 1, 1);
+                8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft), 1, 3);
 
             deleteOldBox = MakeCheck("删除其它版本的旧 PhiMC jar", true);
-            optT.Controls.Add(deleteOldBox, 0, 2);
-            optT.Controls.Add(MakeLabel("mods 里只能有一个 phimc-*.jar，多版本共存会两个都不加载",
-                8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft), 1, 2);
+            optT.Controls.Add(deleteOldBox, 0, 4);
+            optT.Controls.Add(MakeLabel("同一类型只能有一个 jar；另一种类型的 jar 每次安装都会清掉（否则启动即冲突）",
+                8.5F, FontStyle.Regular, C_MUTED, ContentAlignment.MiddleLeft), 1, 4);
 
             // ---------------- 4. 主按钮行 ----------------
             TableLayoutPanel actT = new TableLayoutPanel();
@@ -491,7 +523,9 @@ namespace PhiMCSetup
                 }
                 FitInstanceColumns();
             };
-            Print("提示：先确认目录和实例，再点【立即安装】。装完把材质包 .zip 丢进【打开资源包文件夹】里那个目录，进游戏设置页切换。");
+            Print("提示：先确认目录、实例和③里的「版本类型」，再点【立即安装】。完整版与打歌版只能二选一（安装器会自动清理另一种）。");
+            Print("      装完把材质包 .zip 丢进【打开资源包文件夹】里那个目录，进游戏设置页切换。");
+            uiReady = true;
         }
 
         // ==================================================================
@@ -540,6 +574,22 @@ namespace PhiMCSetup
             return c;
         }
 
+        /** 版本类型单选按钮（两个同父 → 互斥）。 */
+        private static RadioButton MakeRadio(string text, bool @checked)
+        {
+            RadioButton r = new RadioButton();
+            r.Text = text;
+            r.Font = new Font(UiFamily, 9F);
+            r.ForeColor = C_TEXT;
+            r.Checked = @checked;
+            r.AutoSize = false;
+            r.Dock = DockStyle.Fill;
+            r.TextAlign = ContentAlignment.MiddleLeft;
+            r.Margin = new Padding(0);
+            r.Cursor = Cursors.Hand;
+            return r;
+        }
+
         private static Button MakeButton(string text, bool primary)
         {
             Button b = new Button();
@@ -560,7 +610,7 @@ namespace PhiMCSetup
         private void FitInstanceColumns()
         {
             if (instanceList == null || instanceList.Columns.Count < 4) return;
-            int fixedW = 90 + 130 + 100 + 8;
+            int fixedW = 90 + 130 + 160 + 8;
             int w = instanceList.ClientSize.Width - fixedW;
             if (w < 160) w = 160;
             instanceList.Columns[0].Width = w;
@@ -686,7 +736,8 @@ namespace PhiMCSetup
             else if (v != null)
             {
                 statusLabel.ForeColor = C_OK;
-                statusLabel.Text = "实例 MC " + mc + " → " + v.JarName + " + " + v.FabricApiName
+                statusLabel.Text = "实例 MC " + mc + " → " + TypeLabel() + "："
+                    + JarNameFor(v) + " + " + v.FabricApiName
                     + "  （检测到 " + detectedCount + " 个实例"
                     + (detectedFabric ? "" : "，没有 Fabric 实例！点【装 Fabric】") + "）";
             }
@@ -733,7 +784,8 @@ namespace PhiMCSetup
                 File.WriteAllText(SettingsPath(),
                     "mc=" + McDir() + "\r\n" +
                     "ver=" + SelectedVersion() + "\r\n" +
-                    "iso=" + (Isolated() ? "1" : "0") + "\r\n");
+                    "iso=" + (Isolated() ? "1" : "0") + "\r\n" +
+                    "type=" + (IsLite() ? "lite" : "full") + "\r\n");
             }
             catch (Exception) { }
         }
@@ -750,6 +802,7 @@ namespace PhiMCSetup
                     if (eq <= 0) continue;
                     string k = line.Substring(0, eq), v = line.Substring(eq + 1);
                     if (k == "mc" && v.Length > 0 && Directory.Exists(v)) mcDirBox.Text = v;
+                    else if (k == "type" && v.Length > 0) SetModType(string.Equals(v, "lite", StringComparison.OrdinalIgnoreCase));
                 }
             }
             catch (Exception) { }
@@ -795,11 +848,14 @@ namespace PhiMCSetup
                     string name = Path.GetFileName(d);
                     string mc = DetectInstanceMc(name);
                     string loader = DetectLoader(name);
-                    bool has = IsPhimcInstalled(name);
+                    // 「PhiMC」列跟着③的版本类型走：完整版已装 / 打歌版已装 / 未装（另一种装了会标「将换」）
+                    InstalledKind kind = DetectInstalled(name);
+                    string state = InstalledText(name, kind);
+                    bool has = kind != InstalledKind.None;
                     ListViewItem it = new ListViewItem(name);
                     it.SubItems.Add(mc == null ? "?" : mc);
                     it.SubItems.Add(loader);
-                    it.SubItems.Add(has ? "√ 已装" : "—");
+                    it.SubItems.Add(state);
                     it.Tag = name;
                     instanceList.Items.Add(it);
                     instNames.Add(name);
@@ -884,33 +940,6 @@ namespace PhiMCSetup
             }
             catch (Exception) { }
             return low.Contains("fabric") ? "Fabric" : "原版";
-        }
-
-        /// <summary>
-        /// 这个实例的 mods/ 里有没有 PhiMC：文件名前缀命中，<b>或者</b> jar 内
-        /// {@code fabric.mod.json} 的 id 就是本 mod（改名前的旧 jar 也算已装）。
-        /// </summary>
-        private bool IsPhimcInstalled(string ver)
-        {
-            string mods = Path.Combine(McDir(), "versions", ver, "mods");
-            try
-            {
-                if (!Directory.Exists(mods)) return false;
-                string[] jars = Directory.GetFiles(mods, "*.jar");
-                foreach (string f in jars)
-                {
-                    if (Path.GetFileName(f).StartsWith(ModJarPrefix, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
-                // 兜底：读 fabric.mod.json（只在 jar 不多时扫，避免大盘实例卡界面）
-                if (jars.Length > 80) return false;
-                foreach (string f in jars)
-                {
-                    if (string.Equals(JarModId(f), ModId, StringComparison.OrdinalIgnoreCase)) return true;
-                }
-            }
-            catch (Exception) { }
-            return false;
         }
 
         /// <summary>猜这个版本是不是版本隔离：看 versions&lt;ver&gt; 里有没有 mods / config / saves。</summary>
@@ -1036,6 +1065,128 @@ namespace PhiMCSetup
         private ModVariant SelectedVariant()
         {
             return VariantFor(DetectInstanceMc(SelectedVersion()));
+        }
+
+        // ---------- 版本类型（完整版 / 打歌版：二选一） ----------
+
+        /// <summary>mods/ 里实际装着哪一类 PhiMC。</summary>
+        private enum InstalledKind
+        {
+            None,
+            Full,      // phimc-*.jar（完整版）
+            Lite,      // phimcplayer-*.jar（打歌版）
+            Both       // 两个都在 = 冲突状态，游戏启动会拒绝加载
+        }
+
+        /** 当前选的是不是「打歌版」。 */
+        private bool IsLite()
+        {
+            return liteRadio != null && liteRadio.Checked;
+        }
+
+        /** 当前选中的版本类型的中文名。 */
+        private string TypeLabel()
+        {
+            return IsLite() ? "打歌版" : "完整版";
+        }
+
+        /** 当前类型对应的 mod id。 */
+        private string TypeModId()
+        {
+            return IsLite() ? LiteModId : ModId;
+        }
+
+        /** 当前类型对应、本次要写进 mods/ 的 jar 名（不存在这个 MC 版本时返回 null）。 */
+        private string JarNameFor(ModVariant v)
+        {
+            if (v == null) return null;
+            return IsLite() ? v.LiteJarName : v.JarName;
+        }
+
+        /** 「另一种类型」的 jar 名前缀：完整版 ↔ 打歌版。 */
+        private static string OtherJarPrefix(bool lite)
+        {
+            return lite ? ModJarPrefix : LiteJarPrefix;
+        }
+
+        /** 单选切换：刷新实例列表那一列 + 状态行（安装目标不变）。 */
+        private void OnModTypeChanged()
+        {
+            if (!uiReady) return;
+            RefreshVersionColumn();
+            ApplyLayoutForVersion();
+            Print("→ 版本类型：" + TypeLabel() + "（" + (!IsLite() ? ModJarPrefix : LiteJarPrefix)
+                + "<MC>.jar；安装时会删掉 mods 里另一种类型的 jar）");
+        }
+
+        /** 程序内部设置类型（命令行 --type / 记住上次的选择），不触发日志刷屏。 */
+        private void SetModType(bool lite)
+        {
+            if (liteRadio == null || fullRadio == null) return;
+            if (lite) liteRadio.Checked = true; else fullRadio.Checked = true;
+            RefreshVersionColumn();
+        }
+
+        /// <summary>重新渲染实例列表「PhiMC」列（切类型 / 刷新 / 装完都调）。</summary>
+        private void RefreshVersionColumn()
+        {
+            if (instanceList == null) return;
+            try
+            {
+                instanceList.BeginUpdate();
+                for (int i = 0; i < instanceList.Items.Count && i < instNames.Count; i++)
+                    instanceList.Items[i].SubItems[3].Text = InstalledText(instNames[i], DetectInstalled(instNames[i]));
+                instanceList.EndUpdate();
+            }
+            catch (Exception) { }
+        }
+
+        /** 某一行的状态文字：完整版已装 / 打歌版已装 / 未装，并标出「将换」。 */
+        private string InstalledText(string ver, InstalledKind k)
+        {
+            bool lite = IsLite();
+            if (k == InstalledKind.None) return "— 未装";
+            if (k == InstalledKind.Both) return "× 两个都装了";
+            bool isLiteInstalled = k == InstalledKind.Lite;
+            if (isLiteInstalled == lite) return "√ " + (lite ? "打歌版已装" : "完整版已装");
+            return (lite ? "完整版已装" : "打歌版已装") + "（将换）";
+        }
+
+        /**
+         * 这个实例的 mods/ 里装的是哪一类 PhiMC：文件名前缀命中，<b>或者</b> jar 内
+         * {@code fabric.mod.json} 的 id 命中（改名前的旧 jar 也算已装）。
+         */
+        private InstalledKind DetectInstalled(string ver)
+        {
+            string mods = Path.Combine(McDir(), "versions", ver, "mods");
+            bool full = false, lite = false;
+            try
+            {
+                if (!Directory.Exists(mods)) return InstalledKind.None;
+                string[] jars = Directory.GetFiles(mods, "*" + ModJarSuffix);
+                foreach (string f in jars)
+                {
+                    string name = Path.GetFileName(f);
+                    // 注意顺序：phimcplayer-* 不会命中 phimc-* 前缀（phimc- 后面必须紧跟 '-'）
+                    if (name.StartsWith(LiteJarPrefix, StringComparison.OrdinalIgnoreCase)) lite = true;
+                    else if (name.StartsWith(ModJarPrefix, StringComparison.OrdinalIgnoreCase)) full = true;
+                }
+                // 兜底：读 fabric.mod.json（只在 jar 不多时扫，避免大盘实例卡界面）
+                if ((!full || !lite) && jars.Length <= 80)
+                {
+                    foreach (string f in jars)
+                    {
+                        string id = JarModId(f);
+                        if (string.Equals(id, LiteModId, StringComparison.OrdinalIgnoreCase)) lite = true;
+                        else if (string.Equals(id, ModId, StringComparison.OrdinalIgnoreCase)) full = true;
+                    }
+                }
+            }
+            catch (Exception) { }
+            if (full && lite) return InstalledKind.Both;
+            if (full) return InstalledKind.Full;
+            if (lite) return InstalledKind.Lite;
+            return InstalledKind.None;
         }
 
         // ---------- Fabric 自动安装 ----------
@@ -1276,16 +1427,21 @@ namespace PhiMCSetup
             }
         }
 
-        /// <summary>读当前实例对应的内嵌 mod jar；不支持这个版本时返回 null。</summary>
-        private byte[] ReadEmbeddedJar(ModVariant v)
+        /// <summary>
+        /// 读内嵌 mod jar（按内嵌资源名 = 目标文件名）。{@code jarName} 决定取完整版还是打歌版：
+        /// 完整版 {@code phimc-<MC>.jar}、打歌版 {@code phimcplayer-<MC>.jar}，两者互斥。
+        /// 不支持这个版本时返回 null。
+        /// </summary>
+        private byte[] ReadEmbeddedJar(ModVariant v, string jarName)
         {
             if (v == null) return null;
-            byte[] jar = ReadEmbedded(v.JarName);
+            if (string.IsNullOrEmpty(jarName)) jarName = JarNameFor(v);
+            byte[] jar = ReadEmbedded(jarName);
             if (jar != null) return jar;
-            // 资源名对不上时的兜底：找名字以这个 jar 名结尾的资源
+            // 资源名对不上时的兜底：找名字以这个 jar 名结尾的资源（只做后缀匹配，两种 jar 名不会互为后缀）
             Assembly asm = Assembly.GetExecutingAssembly();
             foreach (string name in asm.GetManifestResourceNames())
-                if (name.EndsWith(v.JarName, StringComparison.OrdinalIgnoreCase))
+                if (name.EndsWith(jarName, StringComparison.OrdinalIgnoreCase))
                     return ReadEmbedded(name);
             return null;
         }
@@ -1301,7 +1457,10 @@ namespace PhiMCSetup
                 string hint = Path.Combine(SongsDir(), "_把谱面包(.zip)放这里.txt");
                 if (!File.Exists(hint))
                 {
-                    File.WriteAllText(hint, "安装器已经把 19 张谱面放好了；想再放自己的，直接把这个文件夹当作 songs/ 用即可。\r\n启动游戏后拿「谱面播放器」右键开始。\r\n");
+                    // 路径两种版本完全一样（mod 侧 ConfigDir.NAME 都是 phimc），只有入口提示不同
+                    File.WriteAllText(hint, IsLite()
+                        ? "安装器已经把内置谱面放好了；打歌版进游戏按 V 打开曲库。\r\n想再放自己的谱面，直接把这个文件夹当作 songs/ 用即可。\r\n"
+                        : "安装器已经把内置谱面放好了；想再放自己的，直接把这个文件夹当作 songs/ 用即可。\r\n进游戏后拿「谱面播放器」右键开始。\r\n");
                 }
                 string probe = Path.Combine(ModsDir(), ".phimc_write_test");
                 File.WriteAllText(probe, "ok");
@@ -1399,9 +1558,10 @@ namespace PhiMCSetup
 
         private string ExportFallback(byte[] jar, ModVariant v)
         {
+            string jarName = JarNameFor(v);
             string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "PhiMC_手动安装");
             Directory.CreateDirectory(dir);
-            File.WriteAllBytes(Path.Combine(dir, v.JarName), jar);
+            File.WriteAllBytes(Path.Combine(dir, jarName), jar);
             byte[] api = ReadEmbedded(v.FabricApiName);
             if (api != null) File.WriteAllBytes(Path.Combine(dir, v.FabricApiName), api);
             foreach (string z in new System.Collections.Generic.List<string>(dropped))
@@ -1410,9 +1570,10 @@ namespace PhiMCSetup
                 catch (Exception) { }
             }
             File.WriteAllText(Path.Combine(dir, "说明.txt"),
-                "1) " + v.JarName + " 与 " + v.FabricApiName + " 复制到：" + ModsDir() + "\r\n" +
-                "2) *.zip 复制到：" + SongsDir() + "\r\n" +
-                "3) 还是拒绝访问：右键文件夹 → 属性 → 安全 → 编辑 → 你的用户 → 完全控制\r\n");
+                "1) " + jarName + " 与 " + v.FabricApiName + " 复制到：" + ModsDir() + "\r\n" +
+                "2) 打歌版（phimcplayer-*.jar）与完整版（phimc-*.jar）只能留一个：先把另一种删掉\r\n" +
+                "3) *.zip 复制到：" + SongsDir() + "\r\n" +
+                "4) 还是拒绝访问：右键文件夹 → 属性 → 安全 → 编辑 → 你的用户 → 完全控制\r\n");
             return dir;
         }
 
@@ -1458,19 +1619,50 @@ namespace PhiMCSetup
         }
 
         /// <summary>
-        /// mods/ 里属于本 mod 的所有 jar：文件名是本 mod 前缀，<b>或者</b> jar 内 fabric.mod.json
-        /// 的 id 就是本 mod（后者兜得住「改名前的旧 jar」—— 文件名前缀不同，但 mod id 相同，
+        /// mods/ 里属于「某一类」的所有 jar：文件名是本类前缀，<b>或者</b> jar 内 fabric.mod.json
+        /// 的 id 就是本类 mod（后者兜得住「改名前的旧 jar」—— 文件名前缀不同，但 mod id 相同，
         /// 两个一起加载会冲突，必须一视同仁地清掉）。
+        /// 另一类（完整版 ↔ 打歌版）的 jar 不算在内。
         /// </summary>
-        private string[] OwnModJars()
+        private string[] ModJarsOfKind(bool lite)
         {
+            string prefix = lite ? LiteJarPrefix : ModJarPrefix;        // phimcplayer- / phimc-
+            string otherPrefix = lite ? ModJarPrefix : LiteJarPrefix;
+            string id = lite ? LiteModId : ModId;
             var list = new System.Collections.Generic.List<string>();
             foreach (string f in Directory.GetFiles(ModsDir(), "*" + ModJarSuffix))
             {
                 string name = Path.GetFileName(f);
-                if (name.StartsWith(ModJarPrefix, StringComparison.OrdinalIgnoreCase)) { list.Add(f); continue; }
-                if (string.Equals(JarModId(f), ModId, StringComparison.OrdinalIgnoreCase)) list.Add(f);
+                if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { list.Add(f); continue; }
+                if (name.StartsWith(otherPrefix, StringComparison.OrdinalIgnoreCase)) continue;   // 归另一类
+                if (string.Equals(JarModId(f), id, StringComparison.OrdinalIgnoreCase)) list.Add(f);
             }
+            return list.ToArray();
+        }
+
+        /** 当前选择的版本类型（完整版 / 打歌版）的 jar。 */
+        private string[] SameTypeJars()
+        {
+            return ModJarsOfKind(IsLite());
+        }
+
+        /**
+         * 另一种类型的 jar：<b>必须删掉</b>。
+         * 打歌版的 fabric.mod.json 里写了 {@code "breaks": {"phimc": "*"}}，
+         * 两个 jar 同时在 mods/ 里时 Fabric Loader 会直接拒绝启动。
+         */
+        private string[] OtherTypeJars()
+        {
+            return ModJarsOfKind(!IsLite());
+        }
+
+        /** 两种类型的全部 jar（诊断用）。 */
+        private string[] OwnModJars()
+        {
+            var list = new System.Collections.Generic.List<string>();
+            list.AddRange(ModJarsOfKind(true));
+            foreach (string f in ModJarsOfKind(false))
+                if (!list.Contains(f)) list.Add(f);
             return list.ToArray();
         }
 
@@ -1495,36 +1687,59 @@ namespace PhiMCSetup
         }
 
         /// <summary>
-        /// 把某个版本对应的 mod jar + Fabric API 写进 mods/。
+        /// 把某个版本对应的 mod jar（完整版或打歌版，由③的单选决定）+ Fabric API 写进 mods/。
         ///
-        /// <p>三个勾选项在这里生效：
-        /// <b>删旧 jar</b>（{@link #deleteOldBox}）—— mods/ 里只能有一个 phimc-*.jar；
+        /// <p>勾选项在这里生效：
+        /// <b>删旧 jar</b>（{@link #deleteOldBox}）—— 同一类型只能留一个 jar；
         /// <b>覆盖</b>（{@link #overwriteBox}）—— 不勾时同名且大小一致就跳过；
         /// <b>装 Fabric API</b>（{@link #apiBox}）—— 不勾时只写 mod jar。
+        /// <b>另一种类型的 jar 不受勾选影响，永远删掉</b>（两个一起加载游戏会拒绝启动）。
         /// 内嵌资源优先，其次看安装器旁边的 dist/&lt;jar 名&gt;。
         /// </summary>
         private bool InstallModFiles(ModVariant v, bool verbose, out string err)
         {
             err = null;
-            byte[] jar = ReadEmbeddedJar(v);
+            string jarName = JarNameFor(v);
+            if (string.IsNullOrEmpty(jarName)) { err = "没有可安装的 jar（版本类型/实例为空）"; return false; }
+            byte[] jar = ReadEmbeddedJar(v, jarName);
             if (jar == null)
             {
-                string local = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dist", v.JarName);
+                string local = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dist", jarName);
                 if (File.Exists(local)) jar = File.ReadAllBytes(local);
             }
-            if (jar == null) { err = "找不到内嵌 jar（" + v.JarName + "）"; return false; }
+            if (jar == null) { err = "找不到内嵌 jar（" + jarName + "）"; return false; }
 
             Directory.CreateDirectory(ModsDir());
-            // 清掉其它版本的 mod jar：两个版本的 PhiMC 同时在 mods/ 里会双双加载失败
+            if (verbose)
+                Print("· 版本类型：" + TypeLabel() + "（mod id " + TypeModId() + "，jar " + jarName + "）");
+
+            // ① 另一种类型（完整版 ↔ 打歌版）：无条件删。lite 的 fabric.mod.json 有 breaks:{phimc:"*"}，
+            //    两个 jar 同时存在时 Fabric Loader 直接拒绝启动 —— 所以这一步不看「删除旧 jar」勾选。
+            try
+            {
+                foreach (string other in OtherTypeJars())
+                {
+                    File.Delete(other);
+                    if (verbose) Print("√ 已删除冲突 jar（另一种版本）：" + Path.GetFileName(other));
+                }
+            }
+            catch (Exception e)
+            {
+                // 删不掉（文件被占用 / 没权限）不要中断安装，但要在日志里说清楚后果；
+                // 装完 Diagnose 还会再报一次，结果横幅也会提示。
+                Print("× 删除冲突 jar 失败（另一种版本的 jar 还在，游戏会拒绝启动）：" + e.Message);
+            }
+
+            // ② 同类型的其它 MC 版本：按勾选删（mods/ 里同 id 只能有一个 jar）
             if (OptDeleteOldJars())
             {
                 try
                 {
-                    foreach (string old in OwnModJars())
+                    foreach (string old in SameTypeJars())
                     {
-                        if (string.Equals(Path.GetFileName(old), v.JarName, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (string.Equals(Path.GetFileName(old), jarName, StringComparison.OrdinalIgnoreCase)) continue;
                         File.Delete(old);
-                        if (verbose) Print("· 已删除旧 jar：" + Path.GetFileName(old));
+                        if (verbose) Print("· 已删除旧 jar（同类型其它 MC 版本）：" + Path.GetFileName(old));
                     }
                 }
                 catch (Exception e) { if (verbose) Print("· 清理旧 jar 失败（不影响本次写入）：" + e.Message); }
@@ -1533,14 +1748,16 @@ namespace PhiMCSetup
             {
                 try
                 {
-                    string[] own = OwnModJars();
+                    string[] own = SameTypeJars();
                     if (own.Length > 1 && verbose)
-                        Print("· 警告：mods/ 里有 " + own.Length + " 个 PhiMC jar（按勾选没删），两个都会被加载，可能冲突");
+                        Print("· 警告：mods/ 里有 " + own.Length + " 个 " + TypeLabel()
+                            + " jar（按勾选没删），两个都会被加载，可能冲突");
                 }
                 catch (Exception) { }
             }
 
-            string target = Path.Combine(ModsDir(), v.JarName);
+            // ③ 写入：同名同大小且没勾「覆盖」→ 跳过
+            string target = Path.Combine(ModsDir(), jarName);
             bool skipWrite = false;
             if (!OptOverwrite() && File.Exists(target))
             {
@@ -1549,7 +1766,7 @@ namespace PhiMCSetup
                     long len = new FileInfo(target).Length;
                     if (len == jar.Length) skipWrite = true;
                     else if (verbose)
-                        Print("· 已有 " + v.JarName + " 但大小不同（" + len + " vs " + jar.Length + "），仍然覆盖");
+                        Print("· 已有 " + jarName + " 但大小不同（" + len + " vs " + jar.Length + "），仍然覆盖");
                 }
                 catch (Exception) { }
             }
@@ -1560,7 +1777,8 @@ namespace PhiMCSetup
             else
             {
                 if (!WriteJarVerified(jar, target, out err)) return false;
-                if (verbose) Print("√ 已写入 mod：" + target + "  " + jar.Length + " 字节（已回读校验）");
+                if (verbose) Print("√ 已写入 mod（" + TypeLabel() + "）：" + target + "  " + jar.Length
+                    + " 字节（已回读校验）");
             }
 
             if (!OptInstallFabricApi())
@@ -1687,7 +1905,8 @@ namespace PhiMCSetup
                 }
             }
             Print("√ 目录就绪：" + InstallRoot());
-            Print("  实例 Minecraft " + mc + "  →  " + variant.JarName + " + " + variant.FabricApiName);
+            Print("  版本类型：" + TypeLabel() + "（mod id " + TypeModId() + "）");
+            Print("  实例 Minecraft " + mc + "  →  " + JarNameFor(variant) + " + " + variant.FabricApiName);
             SetProgress(20, "写入 mod jar…");
 
             if (!InstallModFiles(variant, true, out err))
@@ -1696,9 +1915,9 @@ namespace PhiMCSetup
                 Print("  当前是否管理员：" + (IsElevated() ? "是" : "否"));
                 Print("  目标 ACL：" + AclOf(ModsDir()));
                 string fallback;
-                try { fallback = ExportFallback(ReadEmbeddedJar(variant), variant); Print("→ 已导出到：" + fallback); }
+                try { fallback = ExportFallback(ReadEmbeddedJar(variant, JarNameFor(variant)), variant); Print("→ 已导出到：" + fallback); }
                 catch (Exception ex) { fallback = "(导出失败: " + ex.Message + ")"; Print("× " + fallback); }
-                Print("→ 下一步：完全退出游戏/启动器后重试；或以管理员重试；或把 " + variant.JarName
+                Print("→ 下一步：完全退出游戏/启动器后重试；或以管理员重试；或把 " + JarNameFor(variant)
                     + " 手动复制进 " + ModsDir());
                 SetResult(false, "写文件失败：" + Short(err, 80), "退出游戏后重试，或以管理员重试（也可用导出的手动安装包）");
                 SetProgress(0, "安装中止");
@@ -1728,20 +1947,36 @@ namespace PhiMCSetup
             SetProgress(92, "诊断…");
             SaveSettings();
             Diagnose();
+
+            // 收尾自检：另一种版本的 jar 一定要没了（两个共存 = 游戏拒绝启动）
+            int conflicts = 0;
+            try { conflicts = OtherTypeJars().Length; } catch (Exception) { }
+            if (conflicts > 0)
+                Print("× 还有一个另一种版本的 jar 没删掉 —— 手动删掉 " + ModsDir() + " 里的 "
+                    + (IsLite() ? "phimc-*.jar" : "phimcplayer-*.jar") + "，否则游戏会拒绝启动");
+
             SetProgress(100, "安装完成");
-            SetResult(true, "安装完成：" + variant.JarName + " → " + ModsDir(),
-                "启动游戏并选「" + ver + "」实例；材质包 .zip 丢进【打开资源包文件夹】");
+            string nextStep = IsLite()
+                ? "启动游戏并选「" + ver + "」实例，进游戏按 V 打开曲库"
+                : "启动游戏并选「" + ver + "」实例；材质包 .zip 丢进【打开资源包文件夹】";
+            SetResult(conflicts == 0, "安装完成：" + TypeLabel() + " " + JarNameFor(variant) + " → " + ModsDir(),
+                conflicts == 0 ? nextStep : "先手动删掉另一种版本的 jar");
             MessageBox.Show(this,
                 "安装完成！\r\n\r\n" +
+                "版本类型：" + TypeLabel() + "（mod id " + TypeModId() + "）\r\n" +
                 "实例：" + ver + "（Minecraft " + mc + "，" + (Isolated() ? "版本隔离" : "全局") + "）\r\n" +
-                "mod：" + Path.Combine(ModsDir(), variant.JarName) + "\r\n" +
+                "mod：" + Path.Combine(ModsDir(), JarNameFor(variant)) + "\r\n" +
                 "Fabric API：" + (OptInstallFabricApi() ? variant.FabricApiName : "（按勾选跳过）") + "\r\n" +
                 "曲目：" + SongsDir() + "\r\n" +
-                "材质包：" + ResPackDir() + "\r\n\r\n" +
-                "下一步：\r\n" +
+                "材质包：" + ResPackDir() + "\r\n" +
+                (conflicts == 0 ? "" : "\r\n⚠ " + ModsDir() + " 里还有另一种版本的 jar，必须手动删掉！\r\n") +
+                "\r\n下一步：\r\n" +
                 "1) 启动游戏，用启动器选「" + ver + "」\r\n" +
-                "2) 创造模式物品栏 → PhiMC 页签 → 拿「谱面播放器」\r\n" +
-                "3) 右键它选歌开始",
+                (IsLite()
+                    ? "2) 进游戏按 V 打开曲库（默认键位，可在「控制 → 按键绑定」里改）\r\n" +
+                      "3) 选歌开始；打歌版不发任何物品，成绩保存在本地"
+                    : "2) 创造模式物品栏 → PhiMC 页签 → 拿「谱面播放器」\r\n" +
+                      "3) 右键它选歌开始"),
                 "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
@@ -1762,7 +1997,8 @@ namespace PhiMCSetup
                 psi.UseShellExecute = true;
                 psi.Verb = "runas";
                 psi.Arguments = "--mc \"" + McDir() + "\" --ver \"" + SelectedVersion() + "\""
-                    + (Isolated() ? " --iso" : "");
+                    + (Isolated() ? " --iso" : "")
+                    + (IsLite() ? " --type lite" : " --type full");
                 foreach (string z in new System.Collections.Generic.List<string>(dropped))
                     psi.Arguments += " --zip \"" + z + "\"";
                 Process.Start(psi);
@@ -1937,21 +2173,28 @@ namespace PhiMCSetup
             string ver = SelectedVersion();
             string mc = DetectInstanceMc(ver);
             ModVariant v = VariantFor(mc);
-            string jar = v == null ? null : Path.Combine(ModsDir(), v.JarName);
+            string wantJar = JarNameFor(v);
+            string jar = wantJar == null ? null : Path.Combine(ModsDir(), wantJar);
+            Print("  版本类型：" + TypeLabel() + "（mod id " + TypeModId() + "，期望 jar " + (wantJar ?? "?") + "）");
             if (jar != null && File.Exists(jar))
             {
                 FileInfo fi = new FileInfo(jar);
                 string hash = BitConverter.ToString(System.Security.Cryptography.SHA256.Create()
                     .ComputeHash(File.ReadAllBytes(jar))).Replace("-", "").Substring(0, 12).ToLowerInvariant();
-                Print("  jar：√ " + fi.Length + " 字节  sha256=" + hash + "  (" + v.JarName + ")");
+                Print("  jar：√ " + fi.Length + " 字节  sha256=" + hash + "  (" + wantJar + ")");
             }
-            else Print("  jar：× 不存在（" + (jar ?? ModsDir() + "\\" + ModJarPrefix + "<MC 版本>.jar") + "）");
+            else Print("  jar：× 不存在（" + (jar ?? ModsDir() + "\\" + (IsLite() ? LiteJarPrefix : ModJarPrefix) + "<MC 版本>.jar") + "）");
 
             try
             {
-                string[] jars = OwnModJars();
-                if (jars.Length > 1)
-                    Print("  ⚠ mods/ 里有 " + jars.Length + " 个 " + ModId + " jar（只能有一个，否则会加载失败）");
+                string[] same = SameTypeJars();
+                if (same.Length > 1)
+                    Print("  ⚠ mods/ 里有 " + same.Length + " 个 " + TypeLabel()
+                        + " jar（同类型只能有一个，否则会加载失败）");
+                string[] other = OtherTypeJars();
+                if (other.Length > 0)
+                    Print("  ⚠ mods/ 里有另一种版本的 jar（" + Path.GetFileName(other[0]) + "）："
+                        + "完整版与打歌版二选一，两个共存游戏会拒绝启动");
                 string[] apis = Directory.GetFiles(ModsDir(), "fabric-api-*.jar");
                 Print("  Fabric API：" + (apis.Length > 0 ? "√ " + Path.GetFileName(apis[0]) : "× 没有（mod 依赖它，缺了不会加载）"));
             }
@@ -2002,7 +2245,7 @@ namespace PhiMCSetup
         public static void Main(string[] args)
         {
             bool silent = false;
-            string mc = null, ver = null;
+            string mc = null, ver = null, type = null;
             bool iso = false;
             System.Collections.Generic.List<string> zips = new System.Collections.Generic.List<string>();
             for (int i = 0; i < args.Length; i++)
@@ -2011,6 +2254,8 @@ namespace PhiMCSetup
                 else if (args[i] == "--mc" && i + 1 < args.Length) mc = args[++i];
                 else if (args[i] == "--ver" && i + 1 < args.Length) ver = args[++i];
                 else if (args[i] == "--iso") iso = true;
+                // --type full|lite —— 提权重开时带上，保证还是刚才选的那种版本
+                else if (args[i] == "--type" && i + 1 < args.Length) type = args[++i];
                 else if (args[i] == "--zip" && i + 1 < args.Length) zips.Add(args[++i]);
                 else if (args[i] == "--force") forceWrite = true;
             }
@@ -2019,6 +2264,7 @@ namespace PhiMCSetup
             {
                 SetupForm f = new SetupForm();
                 if (mc != null) f.mcDirBox.Text = mc;
+                if (type != null) f.SetModType(string.Equals(type, "lite", StringComparison.OrdinalIgnoreCase));
                 f.RefreshVersions(false);
                 f.LoadVersionAndIso(ver, iso);
                 f.ApplyLayoutForVersion();
@@ -2035,7 +2281,7 @@ namespace PhiMCSetup
                     }
                     else if (f.InstallModFiles(variant, true, out err))
                     {
-                        f.Print("√ 已写入 mod：" + Path.Combine(f.ModsDir(), variant.JarName)
+                        f.Print("√ 已写入 mod（" + f.TypeLabel() + "）：" + Path.Combine(f.ModsDir(), f.JarNameFor(variant))
                             + "  + " + variant.FabricApiName);
                         f.InstallBuiltinSongs();
                     }
@@ -2060,7 +2306,9 @@ namespace PhiMCSetup
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             SetupForm form = new SetupForm();
-            if (mc != null) { form.mcDirBox.Text = mc; form.RefreshVersions(false); }
+            if (mc != null) form.mcDirBox.Text = mc;
+            if (type != null) form.SetModType(string.Equals(type, "lite", StringComparison.OrdinalIgnoreCase));
+            if (mc != null || type != null) form.RefreshVersions(false);
             form.LoadVersionAndIso(ver, iso);
             form.ApplyLayoutForVersion();
             if (zips.Count > 0)

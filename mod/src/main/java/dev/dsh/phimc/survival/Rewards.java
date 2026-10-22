@@ -1,7 +1,6 @@
 package dev.dsh.phimc.survival;
 
 import dev.dsh.phimc.core.Judgement;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.Item;
@@ -30,9 +29,17 @@ import java.util.List;
  *
  * <p><b>线程 / 权威性</b>：{@code finish()} 跑在**客户端线程**上，而单人游戏的背包属于
  * 集成服务端（另一个线程）。所以单人时把发放任务 {@code server.execute(...)} 丢回服务端线程，
- * 由服务端改背包、发提示，客户端只是收到同步结果；没有集成服务端（专用服务器 —— 本 mod
- * 本来也不支持）时才退化成直接改客户端背包。这条比 {@link Wallet#pay} 的「两边都改」更严格，
- * 因为它不需要镜像：服务端改完之后原版同步会自己把结果推给客户端。
+ * 由服务端改背包、发提示，客户端只是收到同步结果。
+ * <b>客户端只负责显示结算界面</b>：本类不改界面、不读界面状态，只把「这一局给了什么」
+ * 记进 {@link #lastReward} 供 {@code PlayScreen} 画一行字。
+ *
+ * <p><b>硬规则：没有集成服务端玩家就不发</b>（用户要求，见 {@link #grantOnFinish(String, int, java.util.Random)}
+ * 里的注释）：{@link SurvivalEnv#serverPlayer()} 为 {@code null}（专用服务端 / 多人 / 还没进世界）
+ * 时<b>一律不发奖励</b>，只记一条日志。这条规则与「完整版 / 打歌 only」无关，两个变体都遵守；
+ * 打歌 only 变体更是<b>连 {@code grantOnFinish} 都不调用</b>（见 {@code Session.finish()}）。
+ *
+ * <p><b>本类零客户端依赖</b>：服务端对象取自 {@link SurvivalEnv#server()}（不再
+ * {@code MinecraftClient.getInstance().getServer()}），所以专用服务端加载本类是安全的。
  *
  * <p><b>不改计分/判定</b>：本类只读 {@code engine.score()}，评级由 {@link Judgement#rank} 算，
  * 判定与计分公式一行没动。
@@ -106,20 +113,41 @@ public final class Rewards {
         java.util.Random rnd = random == null ? new java.util.Random() : random;
         // 随机抽：抽几次由评级决定，每次从 PriceTable 的三档池里按权重抽物品 + 区间内抽数量
         List<RewardTable.Reward> rewards = RewardTable.roll(rank, rnd);
+
+        // ==============================================================
+        // 硬规则（用户定，不随 any 开关变化）：
+        //   SurvivalEnv.serverPlayer() == null（专用服务端 / 多人 / 还没进世界）
+        //   ⇒ **一律不发奖励，只记日志**。
+        //
+        // 为什么必须是硬规则：改造前本 mod 的物品只注册在客户端，服务端没有这些注册，
+        // 真发出去的东西在服务端看来是「未知物品」；而客户端背包又是服务端同步下来的，
+        // 于是「看起来塞进去了，几 tick 后被同步覆盖」——比不发更糟。
+        // 现在物品在双端都注册了，「未知物品」不再是问题；但**专用服务端仍然拿不到
+        // 「客户端这一局的结果」**（没有结果包），所以这条硬规则保持不变：
+        // 只有单人（集成服务端同进程、serverPlayer 拿得到）时，改服务端背包才是权威的。
+        // ==============================================================
+        ServerPlayerEntity serverPlayer = SurvivalEnv.serverPlayer();
+        if (serverPlayer == null) {
+            // 清算掉「上一局的奖励」：结算界面按 lastRewardText() 画，不能显示上一次的残留
+            lastReward = new LastReward(chartId, rank, "");
+            LOG.info("[PhiMC] 结算奖励：{} 评级 {} —— 没有本机服务端玩家（专用服务端 / 多人），按硬规则不发奖励",
+                    chartId, rank);
+            return List.of();
+        }
+
         // 先把「这一局给了什么」记下来：结算界面紧接着就要画，而发物品可能下一 tick 才在服务端线程做
         lastReward = new LastReward(chartId, rank, RewardTable.summary(rewards));
         if (rewards.isEmpty()) {
             LOG.info("[PhiMC] 结算奖励：{} 评级 {}（无奖励）", chartId, rank);
             return rewards;
         }
-        MinecraftClient mc = MinecraftClient.getInstance();
-        MinecraftServer server = mc.getServer();
-        ServerPlayerEntity serverPlayer = SurvivalEnv.serverPlayer();
-        if (server != null && serverPlayer != null) {
+        MinecraftServer server = SurvivalEnv.server();
+        if (server != null) {
             // 单人：背包是集成服务端的，回服务端线程改
             server.execute(() -> giveAndNotify(serverPlayer, chartId, rank, rewards));
         } else {
-            giveAndNotify(mc.player, chartId, rank, rewards);
+            // 理论不可达（serverPlayer 非空 ⇒ 服务端已绑定）。留一条兜底，别把奖励吞掉。
+            giveAndNotify(serverPlayer, chartId, rank, rewards);
         }
         return rewards;
     }

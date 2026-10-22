@@ -25,12 +25,11 @@ import java.util.List;
  * 一个播放器」的画面，所以融合结果也是 {@link ItemEntity}，不是直接塞玩家背包。
  *
  * <p><b>为什么在服务端 tick 里扫</b>：掉落物的增删只有逻辑端算数 —— 客户端只能看到
- * 服务端同步过来的结果。本 mod 是 client-only 的（{@code fabric.mod.json} 里
- * {@code environment: "client"}），单人游戏里集成服务端与客户端同进程、共用同一份静态
- * {@code Registries}，所以 {@code ServerTickEvents} 在单人局里照常触发
- * （同一个用法在 {@code survival/ChipLoot} 里已经跑了很久：开箱赋谱就是靠
- * {@code END_SERVER_TICK}）；专用服务器根本不加载这个 mod，多人里也就没有这个彩蛋
- * （物品本身也一样不存在）。
+ * 服务端同步过来的结果。本模组现在是<b>双端</b>的（{@code fabric.mod.json} 里
+ * {@code environment: "*"}，物品注册挂在 {@code PhiMCMod} 的 {@code "main"} 入口），
+ * 所以单人（集成服务端）和服主开的专用服务端都会触发 {@code END_WORLD_TICK}。
+ * 本类不引用任何 {@code net.minecraft.client.*}，专用服务端加载是安全的。
+ * 客户端侧只是收到「两个掉落物消失、多了个播放器」的同步结果。
  *
  * <p><b>每对只触发一次</b>：{@link #fuse} 先把两个掉落物 {@code discard()} 掉再生成播放器，
  * 下一 tick 扫描时它们已经 {@code isRemoved()}，不会重复配对；生成出来的又是播放器

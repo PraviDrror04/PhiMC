@@ -942,7 +942,11 @@ public class PlayScreen extends Screen {
         // （"奖励：金锭×3 + 钻石×1" ≈ 120px）离它几百像素远；万一更长就按像素宽度截断。
         // 自动游玩局不发奖励（Session.finish() 不调 Rewards.grantOnFinish），这一行写清楚原因，
         // 不能显示上一局残留的 Rewards.lastRewardText()。
-        if (session.autoplay()) {
+        // 打歌 only（phimcplayer）根本没有奖励这回事：Session.finish() 不调 Rewards，
+        // 这一行固定写「成绩已存本地」，而不是留一句容易误解的「奖励：无」。
+        if (dev.dsh.phimc.PhiMC.onlyMode) {
+            drawRow(ctx, mc, cx, row, truncateToWidth(mc, "纯客户端 · 成绩已存本地", REWARD_MAX_W), 0xFFAAAAAA);
+        } else if (session.autoplay()) {
             drawRow(ctx, mc, cx, row, truncateToWidth(mc, "奖励：无（自动游玩）", REWARD_MAX_W), 0xFFAAAAAA);
         } else {
             Rewards.LastReward reward = Rewards.lastReward();

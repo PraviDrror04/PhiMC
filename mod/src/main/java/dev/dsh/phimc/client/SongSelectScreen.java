@@ -1,5 +1,6 @@
 package dev.dsh.phimc.client;
 
+import dev.dsh.phimc.PhiMC;
 import dev.dsh.phimc.item.ChipItem;
 import dev.dsh.phimc.survival.Profile;
 import net.minecraft.client.gui.DrawContext;
@@ -35,7 +36,7 @@ import java.util.function.Supplier;
  * detailBottom = dTop + max(S, infoNeed)（480→149，720→169）
  * filterY = detailBottom + 8      本地页「搜索 / 排序 / 锁定 / 难度」那一行（480→157，720→177）
  * listTop = filterY + 20 + 6      列表顶（480→183，720→203）
- * listBottom = H - 30             （480→450，720→690）
+ * listBottom = H - 26 - 4 - 13    （480→437，720→677）：H - BOTTOM_H - 4 - DISCLAIM_H
  * NOTICE_H = 12                   列表与底部按钮之间留给提示行（拷贝结果 / 未解锁）
  * 行高 ROW_H = 20，行距 ROW_STEP = 22
  * 每页条数 = clamp((listBottom - NOTICE_H - listTop) / ROW_STEP, 1, 20)（480→11，720→20）
@@ -49,9 +50,15 @@ import java.util.function.Supplier;
  * 「拷芯片」：   x = W - PAD - 4 - 56 = W - 72，宽 56 高 16，y = 行顶 + 2
  * 行内「未解锁」：与「拷芯片」同一个右侧槽位（右对齐），未解锁时**不生成按钮**
  * 最佳成绩：     右对齐到 拷芯片左边界 - 8
- * 底部按钮：     6 个槽位（5×70 + 「自动游玩」100），间距 8，整体居中，y = H - 26
+ * 底部按钮：     6 个槽位（5×70 + 「自动游玩」100），间距 8，整体居中，y = H - 26 - 13
  *                顺序：← 上一页 / 开始 / [✓] 自动游玩 / 商店(或关闭) / 设置 / 下一页 →
  * 提示行：       (PAD, listBottom - 10)
+ * 页脚声明：     (0, H - 13, W, 13) 极淡半透明底条（0x66000000）+ 居中灰字（0xFF9AA0A8）
+ *                「非官方同人项目 · 与鸽游（Pigeon Games）及《Phigros》官方无授权、合作或运营关系」
+ *                —— **本地 / 在线两个页签都常驻**，见 {@link #drawDisclaimer}；文案走
+ *                {@code text.phimc.disclaimer}（{@code assets/phimc/lang/zh_cn.json}）。
+ *                从下往上的层次：声明条 → 底部 6 按钮 → 提示行 → 列表（互不重叠，
+ *                逐像素断言在 {@code tools/ui/select-layout.ps1}）。
  * </pre>
  *
  * <h2>页签：本地 / 在线（{@link Tab}）</h2>
@@ -153,6 +160,15 @@ public class SongSelectScreen extends Screen {
     /** 行内「拷芯片」按钮尺寸。 */
     private static final int COPY_W = 56;
     private static final int COPY_H = 16;
+    /**
+     * 页脚「非官方同人项目」声明条的高度。
+     *
+     * <p>它是<b>常驻页脚</b>（本地 / 在线两个页签都有），所以底部要给出来：
+     * {@link #listBottom()} 与底部按钮的 y 都整体上移 {@code DISCLAIM_H}，
+     * 从下往上的层次是「声明条 → 6 个按钮 → 提示行 → 列表」。
+     * 13 = 9px 字高 + 上下各 2px；854×480 上每页仍是 11 行（见 {@code tools/ui/select-layout.ps1}）。
+     */
+    private static final int DISCLAIM_H = 13;
 
     // ---------------- 在线页（Phira）布局常量 ----------------
     /** 顶部页签按钮：48×18，左上角两个。 */
@@ -256,6 +272,17 @@ public class SongSelectScreen extends Screen {
     private static final int C_UNPUB = 0xFF9C9C9C;
     /** 未上架谱面的难度 / 评分 / 谱师灰。 */
     private static final int C_UNPUB_META = 0xFF7C7C7C;
+    /** 页脚声明的文字灰：比 C_DIM 再暗一档，但仍在灰底上读得清。 */
+    private static final int C_DISCLAIM = 0xFF9AA0A8;
+    /** 页脚声明条底：极淡半透明黑（40%），视觉上是「页脚」而不是浮在内容上的字。 */
+    private static final int C_DISCLAIM_BG = 0x66000000;
+    /**
+     * 「非官方同人项目」声明的 lang key（{@code assets/phimc/lang/zh_cn.json} / {@code en_us.json}）。
+     *
+     * <p>文案：{@code 非官方同人项目 · 与鸽游（Pigeon Games）及《Phigros》官方无授权、合作或运营关系}；
+     * 英文：{@code Unofficial fan project. Not affiliated with, endorsed by, or operated by Pigeon Games or Phigros.}
+     */
+    private static final String KEY_DISCLAIMER = "text.phimc.disclaimer";
 
     /** 关闭后回到哪个界面；{@code null} = 直接回游戏（P 键 / 结算界面进来）。 */
     private final Supplier<Screen> backTo;
@@ -377,7 +404,9 @@ public class SongSelectScreen extends Screen {
     public SongSelectScreen(boolean unlockAll, Supplier<Screen> backTo) {
         super(Text.literal("PhiMC 选曲"));
         this.unlockAll = unlockAll;
-        this.backTo = backTo;
+        // 打歌 only（phimcplayer）：平板 / 商店那一层根本不存在（连物品都没注册），
+        // 所以「来源界面」一律丢弃 —— 关闭 = 直接回游戏，绝不可能走到 TabletScreen。
+        this.backTo = PhiMC.onlyMode ? null : backTo;
     }
 
     // ------------------------------------------------------------------
@@ -438,7 +467,8 @@ public class SongSelectScreen extends Screen {
     }
 
     private int listBottom() {
-        return height - BOTTOM_H - 4;
+        // 底部让出「6 个按钮（BOTTOM_H + 4）+ 页脚声明条（DISCLAIM_H）」：480→437，720→677
+        return height - BOTTOM_H - 4 - DISCLAIM_H;
     }
 
     /** 每页条数：按列表可用高度算（先让出 {@link #NOTICE_H}），保证最后一行不会压到提示行 / 底部按钮。 */
@@ -464,6 +494,16 @@ public class SongSelectScreen extends Screen {
     /** 提示行的 y（列表最后一行的下面、底部按钮的上面）。 */
     private int noticeY() {
         return listBottom() - NOTICE_H + 2;
+    }
+
+    /** 页脚声明条顶：紧贴屏幕底边，高 {@link #DISCLAIM_H}（480→467，720→707）。 */
+    private int disclaimerY() {
+        return height - DISCLAIM_H;
+    }
+
+    /** 声明文字的 y：条内垂直居中（13 高放 9px 字 → 上 2px）。 */
+    private int disclaimerTextY() {
+        return disclaimerY() + (DISCLAIM_H - INFO_TEXT_H) / 2;
     }
 
     // ---------------- 在线页布局（见类注释） ----------------
@@ -527,7 +567,7 @@ public class SongSelectScreen extends Screen {
     /**
      * 在线页每页能放几行。**这个值同时是请求的 {@code pageNum}**（{@link PhiraBrowser} 的
      * {@code pageSize}）：一页正好铺满一屏，不用在页内再滚动（本地页签也是「一页 = 一屏」）。
-     * 480 → 14，720 → 23（上限 {@link #ONLINE_PAGE_MAX} = 30）。
+     * 480 → 13，720 → 22（上限 {@link #ONLINE_PAGE_MAX} = 30；比加页脚声明前各少 1 行）。
      */
     private int onlinePerPage() {
         int n = (listBottom() - ONLINE_NOTICE_H - onlineListTop()) / ONLINE_ROW_STEP;
@@ -573,9 +613,12 @@ public class SongSelectScreen extends Screen {
             selectedPin = cur >= 0 && cur < songs.size() ? songs.get(cur) : songs.get(0);
         }
         viewDirty = true;          // 列表可能变了（下载完成 / 手动塞包）→ 视图重建
+        // 打歌 only：锁定筛选没有意义（不读解锁数据），进界面就归零，免得停在上次那次的状态
+        if (PhiMC.onlyMode) lockFilter = LockFilter.ALL;
 
         int cx = width / 2;
-        int bottomY = height - BOTTOM_H;
+        // 底部 6 个按钮整体上移 DISCLAIM_H，把最底下那条让给页脚声明（见 drawDisclaimer）
+        int bottomY = height - BOTTOM_H - DISCLAIM_H;
         // 6 个槽位（5 个 70 + 「自动游玩」100），间距 8，整体居中；窄屏按比例收窄，绝不溢出屏幕
         int bw = BTN_W;
         int autoW = AUTO_W;
@@ -739,6 +782,8 @@ public class SongSelectScreen extends Screen {
         if (sortBtn != null) sortBtn.visible = !online;
         if (lockBtn != null) lockBtn.visible = !online;
         if (diffBtn != null) diffBtn.visible = !online;
+        // 打歌 only：「全部可玩」只是说明，不是可点的筛选
+        if (lockBtn != null) lockBtn.active = !PhiMC.onlyMode;
 
         for (int i = 0; i < copyBtns.size(); i++) {
             ButtonWidget copy = copyBtns.get(i);
@@ -746,7 +791,9 @@ public class SongSelectScreen extends Screen {
             // 未解锁的行**不放**按钮（见类注释的取舍）；「拷芯片」只看**真解锁**，
             // 播放器模式（unlockAll）只是「能玩」，不允许把没解锁的谱面复制到芯片里。
             // 在线页签一律不显示（那是本地曲库的操作）。
-            boolean show = !online && index >= 0 && index < view.size() && trulyUnlocked(view.get(index));
+            // 打歌 only：连芯片物品都没注册，整个按钮藏掉（{@code ChipItem.carveHeld} 会读 null 物品）。
+            boolean show = !online && !PhiMC.onlyMode
+                    && index >= 0 && index < view.size() && trulyUnlocked(view.get(index));
             copy.visible = show;
             copy.active = show;
         }
@@ -939,7 +986,8 @@ public class SongSelectScreen extends Screen {
     }
 
     private String lockLabel() {
-        return "锁定：" + lockFilter.label;
+        // 打歌 only：这个按钮只剩一个说明性的灰按钮（点不动），因为没有任何锁定概念
+        return PhiMC.onlyMode ? "全部可玩" : "锁定：" + lockFilter.label;
     }
 
     private String diffLabel() {
@@ -961,6 +1009,13 @@ public class SongSelectScreen extends Screen {
 
     /** 点「锁定」：全部 → 仅已解锁 → 仅未解锁 → 全部。 */
     private void cycleLockFilter() {
+        // 打歌 only：没有任何锁定概念（不读解锁数据），这个筛选在这里没有意义
+        if (PhiMC.onlyMode) {
+            lockFilter = LockFilter.ALL;
+            notice = "打歌 only：所有谱面都可玩（不读解锁数据）";
+            viewDirty = true;
+            return;
+        }
         LockFilter[] all = LockFilter.values();
         lockFilter = all[(lockFilter.ordinal() + 1) % all.length];
         if (lockBtn != null) lockBtn.setMessage(Text.literal(lockLabel()));
@@ -1151,13 +1206,16 @@ public class SongSelectScreen extends Screen {
 
     private boolean isLocked(SongEntry e) {
         if (e == null) return true;
-        if (unlockAll) return false;                 // 播放器模式：全部可玩（但不写进存档）
+        // 播放器模式（unlockAll）/ 打歌 only（PhiMC.onlyMode）：全部可玩，但都**不写**进存档
+        if (unlockAll || PhiMC.onlyMode) return false;
         return !trulyUnlocked(e);
     }
 
     /** 存档里**真正**解锁过没有（只给「拷芯片」用；{@code unlockAll} 不影响它）。 */
     private boolean trulyUnlocked(SongEntry e) {
         if (e == null) return false;
+        // 打歌 only 不读解锁数据（那个变体没有商店 / 平板，`Profile.unlocked` 对它没有意义）
+        if (PhiMC.onlyMode) return false;
         Profile p = profile();
         return p != null && p.isUnlocked(e.chartId());
     }
@@ -1214,6 +1272,8 @@ public class SongSelectScreen extends Screen {
      * 由 {@code setStack} 自己同步，界面不需要重建（重建会把翻页/选中状态再走一遍 init）。
      */
     private void copyRow(int row) {
+        // 打歌 only：芯片物品没注册（CHART_PLAYER / BLANK_CHIP 都是 null），这条路径永不执行
+        if (PhiMC.onlyMode) return;
         Session s = PhiMCClient.session();
         if (s == null || client == null || client.player == null) {
             notice = ChipItem.CarveResult.NO_PROFILE.message();
@@ -1585,17 +1645,32 @@ public class SongSelectScreen extends Screen {
             // 有搜索 / 筛选时把「筛后/总数」都写出来，否则一个数字就够了
             boolean filtered = view.size() != songs.size();
             sub = (filtered ? "筛后 " + view.size() + "/" + songs.size() + " 首" : "共 " + songs.size() + " 首")
-                    + " · 第 " + (page + 1) + "/" + pages
-                    + " 页 · 未解锁的谱面不能开始 · ↑↓/滚轮/点击切换 · 回车开始 · Esc "
-                    + (backTo == null ? "返回" : "去商店");
+                    + " · 第 " + (page + 1) + "/" + pages + " 页 · "
+                    // 打歌 only：没有解锁 / 商店 / 奖励，副标题直接说明「成绩落在哪」
+                    + (PhiMC.onlyMode
+                            ? "纯客户端 · 成绩保存在本地 · ↑↓/滚轮/点击切换 · 回车开始 · Esc 返回"
+                            : "未解锁的谱面不能开始 · ↑↓/滚轮/点击切换 · 回车开始 · Esc "
+                                    + (backTo == null ? "返回" : "去商店"));
         }
         ctx.drawText(textRenderer, fit(sub, subW), subX, 20, C_DIM, true);
 
         if (online) {
             drawOnlineOverlay(ctx);
-            return;
+        } else {
+            drawLocalOverlay(ctx, session, songs);
         }
+        // 页脚「非官方同人项目」声明：**本地 / 在线两个页签都画**，所以放在
+        // 页签分支之后统一调用（以前在线页在这里 return，声明会只在本地页出现）。
+        drawDisclaimer(ctx);
+    }
 
+    /**
+     * 本地页签的内容层：详情面板 + 曲绘 + 信息列 + 提示行。
+     *
+     * <p>从 {@link #render} 里拆出来，只是为了让「页脚声明」在<b>两个页签</b>之后统一画
+     * （在线页以前是提前 {@code return}）。绘制顺序没变：{@code super.render}（子控件）→ 本方法。
+     */
+    private void drawLocalOverlay(DrawContext ctx, Session session, List<SongEntry> songs) {
         SongEntry sel = selectedSong();
 
         // ---- 详情区：左曲绘 + 右信息 ----
@@ -1622,6 +1697,37 @@ public class SongSelectScreen extends Screen {
         if (!notice.isEmpty()) {
             ctx.drawText(textRenderer, fit(notice, width - 2 * PAD), PAD, noticeY(), C_ACCENT, true);
         }
+    }
+
+    /**
+     * 页脚「非官方同人项目」声明：底部一条极淡半透明底条 + 居中灰色小字，<b>两个页签都常驻</b>。
+     *
+     * <p>文案走 {@link Text#translatable}（key {@value #KEY_DISCLAIMER}，中英文都在
+     * {@code assets/phimc/lang/}）：这里取 {@code getString()} 是因为要拿
+     * {@link net.minecraft.client.font.TextRenderer#getWidth(String)} 量宽度做居中。
+     *
+     * <p><b>永远不会被裁掉</b>：正常两档分辨率（1280×720 / 854×480）宽度都够，直接居中画；
+     * 只有窗口窄到放不下时才按 {@code (width - 2·PAD) / 文字宽} 等比缩一档，
+     * 保证首尾都留在内容区里（见 {@code tools/ui/select-layout.ps1} 里的宽度断言）。
+     */
+    private void drawDisclaimer(DrawContext ctx) {
+        ctx.fill(0, disclaimerY(), width, height, C_DISCLAIM_BG);
+        String text = Text.translatable(KEY_DISCLAIMER).getString();
+        int tw = Math.max(1, textRenderer.getWidth(text));
+        int avail = width - 2 * PAD;
+        int y = disclaimerTextY();
+        if (tw <= avail) {
+            ctx.drawText(textRenderer, text, (width - tw) / 2, y, C_DISCLAIM, false);
+            return;
+        }
+        // 兜底：太窄就整体缩到内容区宽（x / y 都从内容区左上角起，缩完正好贴两边）
+        float scale = avail / (float) tw;
+        RenderCompat.Transform ms = RenderCompat.transform(ctx);
+        ms.push();
+        ms.translate(PAD, y);
+        ms.scale(scale, scale);
+        ctx.drawText(textRenderer, text, 0, 0, C_DISCLAIM, false);
+        ms.pop();
     }
 
     // ------------------------------------------------------------------
@@ -1831,9 +1937,12 @@ public class SongSelectScreen extends Screen {
         String illustrator = e.illustrator().isBlank() ? "未知" : e.illustrator();
 
         // 状态：真解锁 →「已解锁」；播放器模式且存档没解锁 →「已解锁（播放器）」；否则「未解锁」
-        String state = unlocked
-                ? (trulyUnlocked(e) ? "已解锁" : "已解锁（播放器）")
-                : "未解锁";
+        // 打歌 only：不读解锁数据，状态就是「可玩」（没有商店 / 芯片这套概念）
+        String state = PhiMC.onlyMode
+                ? "可玩"
+                : (unlocked
+                        ? (trulyUnlocked(e) ? "已解锁" : "已解锁（播放器）")
+                        : "未解锁");
 
         String[][] rows = {
                 {"难度", level},

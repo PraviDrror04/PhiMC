@@ -1,10 +1,10 @@
 package dev.dsh.phimc.item;
 
+import dev.dsh.phimc.ItemHooks;
 import dev.dsh.phimc.PhiMCRegistry;
-import dev.dsh.phimc.client.PhiMCClient;
 import dev.dsh.phimc.survival.Profile;
+import dev.dsh.phimc.survival.ServerSurvival;
 import dev.dsh.phimc.survival.SurvivalEnv;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.Item;
@@ -61,7 +61,9 @@ import java.util.List;
  * （未解锁的行不生成按钮），点击直接调这里并把 {@link CarveResult} 翻成底部提示。
  * 旧的平板曲库列表（{@code TabletScreen} 里的那套）已按用户要求删除，全 mod 只有这一个入口。
  *
- * <p><b>多人限制</b>：与另两个物品一样只在客户端注册（单人 = 集成服务端同进程可用）。
+ * <p><b>双端物品</b>：客户端与专用服务端都会注册（{@code PhiMCMod} 的 main 入口）。本类常量池里
+ * <b>没有</b> {@code net.minecraft.client.*}：界面动作走 {@link ItemHooks}，服务端掉落 / 开箱赋谱
+ * 走 {@code survival/ChipLoot}，解锁写盘分客户端 / 服务端两条（见 {@link #use} 的说明）。
  */
 public class ChipItem extends Item {
 
@@ -238,8 +240,19 @@ public class ChipItem extends Item {
     // ------------------------------------------------------------------
 
     /**
-     * 右键：{@code Profile.unlock(chartId)}，**芯片本身不消失**（可以拿去别的存档再解锁一次）。
+     * 右键：解锁这张芯片里的谱面，**芯片本身不消失**（可以拿去别的存档再解锁一次）。
      * 已经解锁时只提示「已解锁」，不会报错、也不会消耗。
+     *
+     * <h2>双端各写各的存档（这是刻意的）</h2>
+     * <ul>
+     *   <li><b>客户端</b>（含多人服务器里的自己）：走 {@link ItemHooks#useChartChip(ItemStack)}，
+     *       解锁写进客户端自己的 {@code profile.json}（{@code config/phimc/servers/<地址>/}
+     *       或单人 {@code saves/<世界>/phimc/}），提示弹在本地动作条 —— 与改造前一致；</li>
+     *   <li><b>专用服务端</b>：走下面的服务端分支，把解锁写进<b>服主的世界存档</b>
+     *       （{@code world/phimc/profile.json}，见 {@link ServerSurvival}），提示作为动作条包发给
+     *       该玩家。单人游戏里 {@link ServerSurvival#profile()} 是 {@code null}（权威在客户端
+     *       Session），所以这一段直接跳过，行为不变。</li>
+     * </ul>
      */
     @Override
     //? if >=1.21.2 {
@@ -249,16 +262,19 @@ public class ChipItem extends Item {
     *///?}
         ItemStack stack = user.getStackInHand(hand);
         if (world.isClient()) {
-            String id = chartId(stack);
-            Profile profile = PhiMCClient.profile();
-            if (id.isEmpty()) {
-                notice(Text.translatable("message.phimc.chip.empty"));
-            } else if (profile == null) {
-                notice(Text.translatable("message.phimc.chip.no_profile"));
-            } else if (profile.unlock(id)) {
-                notice(Text.translatable("message.phimc.chip.unlocked", id));
-            } else {
-                notice(Text.translatable("message.phimc.chip.already", id));
+            ItemHooks.useChartChip(stack);
+        } else if (user instanceof ServerPlayerEntity player) {
+            // 服务端：只有「专用服务端」才有服务端存档（单人那份归客户端 Session 管）
+            Profile serverProfile = ServerSurvival.profile();
+            if (serverProfile != null) {
+                String id = chartId(stack);
+                if (id.isEmpty()) {
+                    player.sendMessage(Text.translatable("message.phimc.chip.empty"), true);
+                } else if (serverProfile.unlock(id)) {
+                    player.sendMessage(Text.translatable("message.phimc.chip.unlocked", id), true);
+                } else {
+                    player.sendMessage(Text.translatable("message.phimc.chip.already", id), true);
+                }
             }
         }
         //? if >=1.21.2 {
@@ -266,15 +282,6 @@ public class ChipItem extends Item {
         //?} else {
         /*return TypedActionResult.success(stack);
         *///?}
-    }
-
-    /**
-     * 客户端提示（动作条）。解锁写的是客户端自己的 {@code profile.json}，所以提示也在本地显示，
-     * 不用 {@code sendMessage}（那会把内容当成聊天包发给服务端，纯客户端 mod 没有对应处理）。
-     */
-    private static void notice(Text text) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc != null && mc.inGameHud != null) mc.inGameHud.setOverlayMessage(text, false);
     }
 
     @Override

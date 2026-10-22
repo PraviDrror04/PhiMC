@@ -86,6 +86,12 @@ public class TabletScreen extends Screen {
 
     @Override
     protected void init() {
+        // 打歌 only（phimcplayer）：物品根本不存在（PhiMCRegistry 没注册），这个界面任何一处
+        // 走到物品 / 背包都会有 NPE 风险，所以在入口层直接断开 —— 打开即关闭，回到游戏。
+        if (dev.dsh.phimc.PhiMC.onlyMode) {
+            close();
+            return;
+        }
         Session session = PhiMCClient.session();
         Profile profile = session == null ? null : session.profile();
         if (profile == null) {

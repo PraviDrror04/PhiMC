@@ -1,5 +1,6 @@
 package dev.dsh.phimc.client;
 
+import dev.dsh.phimc.PhiMC;
 import dev.dsh.phimc.client.audio.OggToWav;
 import dev.dsh.phimc.core.Chart;
 import dev.dsh.phimc.core.ChartParser;
@@ -198,18 +199,51 @@ public final class Session {
         // 自动游玩读存档（默认 false），选曲界面勾选后写回存档
         this.autoplay = profile.autoplay();
         rescan();
+        // 打歌 only（phimcplayer）：这个变体可以在「主菜单 / 还没进过世界」就直接打歌，
+        // 而 JOIN 事件那时才会把成绩切到 saves/<世界>/ 或 config/phimc/servers/<地址>/。
+        // 所以在构造时先落一个本地兜底目录，保证「打一局 → 关游戏 → 再打开」成绩还在。
+        if (PhiMC.onlyMode) {
+            attachOnlyModeLocal();
+        }
+    }
+
+    /** 配置目录 {@code config/phimc/}（= {@code songs/} 的父目录）。 */
+    public Path modDir() {
+        Path parent = songsDir.getParent();
+        return parent == null ? songsDir : parent;
+    }
+
+    /**
+     * 打歌 only 的本地兜底落点：{@code config/phimc/servers/local/}。
+     *
+     * <p>为什么复用 {@code servers/local} 而不是另开一个目录：{@link ServerStore} 已经把
+     * 「取不到地址」定义成 {@link ServerStore#LOCAL}，这样主菜单、取不到地址的服务器、
+     * 单人世界三条路只差一个目录名，读写代码只有一套。
+     */
+    private void attachOnlyModeLocal() {
+        Path dir = modDir();
+        // false = 不认领旧版单文件进度：打歌 only 不玩解锁 / 商店，没必要搬
+        profile.attachWorld(ServerStore.profileFile(dir, null), false);
+        records.open(ServerStore.recordsFile(dir, null), null);
+        LOG.info("[PhiMC] 打歌 only：成绩保存在 {}", ServerStore.serverDir(dir, null));
     }
 
     /**
      * 进世界：把「玩法进度」切到这个世界自己的文件（{@code saves/<世界名>/phimc/}）。
      *
-     * <p>由 {@code client/WorldHooks} 在 {@code ClientPlayConnectionEvents.JOIN} 里调用。
+     * <p>由 {@code client/WorldHooks} 在 {@code ClientPlayConnectionEvents.JOIN} 里调用；
+     * 多人服务器（拿不到集成服务端）走 {@link #onServerJoin(String)}。
      *
      * @param worldSaveRoot 世界存档根目录（集成服务端的 {@code getSavePath(WorldSavePath.ROOT)}）；
      *                      {@code null} = 多人游戏 / 取不到 → 玩法进度退化成只读兜底，不写任何文件
      */
     public void onWorldJoin(Path worldSaveRoot) {
         if (worldSaveRoot == null) {
+            if (PhiMC.onlyMode) {
+                // 打歌 only 没有「只读」这一档：至少落到本地目录，否则打一局什么都不剩
+                attachOnlyModeLocal();
+                return;
+            }
             profile.detachWorld();
             records.open(null);
             LOG.info("[PhiMC] 没有本地世界存档（多人 / 取不到存档目录）：玩法进度只读");
@@ -224,13 +258,50 @@ public final class Session {
     }
 
     /**
+     * 进<b>多人服务器</b>：没有本地世界存档，成绩按服务器地址落到
+     * {@code config/phimc/servers/<地址>/}（{@link ServerStore}）。
+     *
+     * <p>由 {@code client/WorldHooks} 在 JOIN 里、{@link #onWorldJoin(Path)} 拿不到存档根目录时调用
+     * （地址取自 {@code ClientPlayNetworkHandler.getConnection().getAddress()}）。
+     *
+     * <p><b>不做旧版进度迁移</b>（{@code attachWorld(..., false)}）：否则「第一个进过的服务器」
+     * 会把单人存档里的旧进度认领走，然后再也回不去。
+     *
+     * @param address 服务器地址（{@code host:port}）；{@code null} = 取不到 —— 打歌 only 退到
+     *                {@code servers/local/}，完整版保持原来「只读、不落盘」的口径
+     */
+    public void onServerJoin(String address) {
+        if (address == null || address.isBlank()) {
+            if (PhiMC.onlyMode) {
+                attachOnlyModeLocal();
+                return;
+            }
+            profile.detachWorld();
+            records.open(null);
+            LOG.info("[PhiMC] 多人（取不到服务器地址）：玩法进度只读，成绩不落盘");
+            return;
+        }
+        Path dir = modDir();
+        profile.attachWorld(ServerStore.profileFile(dir, address), false);
+        records.open(ServerStore.recordsFile(dir, address), null);
+        LOG.info("[PhiMC] 多人：成绩按服务器保存到 {}（地址 {}）",
+                ServerStore.serverDir(dir, address), address);
+    }
+
+    /**
      * 退世界：清掉当前世界的玩法进度，回到「没有世界」的只读状态。
      *
      * <p>必须清空：否则上一个世界的解锁留在内存里，可能被下一个世界当成旧版进度迁移过去。
+     *
+     * <p>打歌 only 退世界后回到本地兜底目录（{@code servers/local/}），而不是「不落盘」——
+     * 否则从服务器退出再打歌，成绩就丢了。
      */
     public void onWorldLeave() {
         profile.detachWorld();
         records.open(null);
+        if (PhiMC.onlyMode) {
+            attachOnlyModeLocal();
+        }
     }
 
     /** 旧版单文件的成绩表（{@code config/phimc/records.tsv}），只在一次性迁移时当种子用。 */
@@ -844,7 +915,12 @@ public final class Session {
                 // 结算物资奖励（S5）：按评级发物品，装不下掉脚下。
                 // 只读 engine.score()，判定与计分公式一行没改；这里是「一局结算」的唯一入口，
                 // 所以奖励也只发一次（finish() 自身幂等，restart() 会复位 finished → 重打就是新的一次）。
-                dev.dsh.phimc.survival.Rewards.grantOnFinish(entry.chartId(), engine.score());
+                //
+                // **打歌 only（phimcplayer）绝不走这一行**：那个变体一个物品都没有（连注册都没做），
+                // 发奖励只会在注册表里查不到物品、或者往一个「纯客户端」的背包里塞东西。
+                if (!PhiMC.onlyMode) {
+                    dev.dsh.phimc.survival.Rewards.grantOnFinish(entry.chartId(), engine.score());
+                }
             }
         }
         LOG.info("[PhiMC] 结算：{} | 分数 {} | ACC {:.2f}% | {}/{} | {}",

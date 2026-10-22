@@ -36,8 +36,17 @@ import java.util.List;
  * 行 3 偏移说明   灰色小字：「＋ = 谱面提前 …；－ = 谱面延后 …」
  * 行 4 材质包     右侧 [文件名] 92 / [↻] 26 / [打开文件夹] 58
  * 行 5/6         材质包现状 / 目录提示（灰色小字）
- * 底部 FOOTER_H = 28：[返回] 80×18，Esc 同效
+ * 底部 FOOTER_H = 28：[返回] 80×18，Esc 同效，y = H - 28 - 12
+ * 行 2 之后的提示   y = H - 28 - 12 - 14（在返回按钮上面）
+ * 页脚 DISCLAIM_H = 12：(0, H-12, W, 12) 声明条，「非官方同人项目」那句话
+ *                  （字号再小一档：0.75 倍），面板底就让到 H-12，条子在面板外面
  * </pre>
+ *
+ * <p><b>页脚声明</b>：选曲界面（{@link SongSelectScreen} 底部的 {@code drawDisclaimer}）那句
+ * 「非官方同人项目 · 与鸽游（Pigeon Games）及《Phigros》官方无授权、合作或运营关系」
+ * 在这里也有一条 —— 玩家调设置时会停在这个界面。文案同样走
+ * {@code text.phimc.disclaimer}（{@code assets/phimc/lang/zh_cn.json} / {@code en_us.json}），
+ * 只是画的时候缩到 {@link #DISCLAIM_SCALE}（比选曲界面的 9px 小一档）。
  *
  * <p><b>偏移的符号</b>：{@code +50ms} = <b>谱面提前</b> 50ms（同一个音频位置对应的谱面时间更大，
  * 音符更早到判定线）；{@code -50ms} = 谱面延后。和谱面包自带的 {@code Chart.offset} 是两个独立的东西，
@@ -55,6 +64,14 @@ public class SettingsScreen extends Screen {
     private static final int ROW_H = 28;
     private static final int BTN_H = 18;
     private static final int FOOTER_H = 28;
+    /** 页脚「非官方同人项目」声明条高度（[返回] 按钮与提示行整体上移这么多）。 */
+    private static final int DISCLAIM_H = 12;
+    /** 声明文字缩放：设置页比选曲界面（9px）再小一档 → 6.75px 高。 */
+    private static final float DISCLAIM_SCALE = 0.75f;
+    /** 页脚声明留的左右边距（缩字兜底时按它算可用宽度）。 */
+    private static final int DISCLAIM_PAD = 12;
+    /** 「非官方同人项目」声明的 lang key（和选曲界面共用一条）。 */
+    private static final String KEY_DISCLAIMER = "text.phimc.disclaimer";
     /** 音量步进 10%。 */
     private static final double VOLUME_STEP = 0.1;
     /** 判定偏移步进：10ms（需求：-300ms … +300ms，步进 10）。 */
@@ -65,6 +82,10 @@ public class SettingsScreen extends Screen {
     private static final int C_WHITE = 0xFFFFFFFF;
     private static final int C_GRAY = 0xFF8A8A8A;
     private static final int C_ACCENT = 0xFFB4E1FF;
+    /** 页脚声明的文字灰（与选曲界面同色）。 */
+    private static final int C_DISCLAIM = 0xFF9AA0A8;
+    /** 页脚声明条底：极淡半透明黑（40%）。 */
+    private static final int C_DISCLAIM_BG = 0x66000000;
 
     /** 来源界面（返回时回到它），可为 null（回到游戏）。 */
     private final Screen parent;
@@ -166,9 +187,24 @@ public class SettingsScreen extends Screen {
 
         // ---- 键盘游玩 开/关：已删（键盘恒开，Profile.useKeyboard 只为存档兼容保留） ----
 
-        // ---- 底部：返回 ----
+        // ---- 底部：返回（整体上移 DISCLAIM_H，把最底下一条让给页脚声明） ----
         addDrawableChild(ButtonWidget.builder(Text.literal("返回"), b -> close())
-                .dimensions(cx - 40, height - FOOTER_H, 80, BTN_H).build());
+                .dimensions(cx - 40, footerY(), 80, BTN_H).build());
+    }
+
+    /** [返回] 按钮的 y：底部页脚声明条上面（480→440，720→680）。 */
+    private int footerY() {
+        return height - FOOTER_H - DISCLAIM_H;
+    }
+
+    /** 页脚声明条的 y：贴屏幕底边（480→468，720→708）。 */
+    private int disclaimerY() {
+        return height - DISCLAIM_H;
+    }
+
+    /** 提示行（音量试听 / 偏移 / 切包结果）的 y：[返回] 按钮上面一行。 */
+    private int noticeY() {
+        return footerY() - 14;
     }
 
     private static int rowY(int i) {
@@ -300,7 +336,8 @@ public class SettingsScreen extends Screen {
         /*this.renderBackground(ctx);
         *///?}
         int cx = width / 2;
-        ctx.fill(cx - PANEL_W / 2, 6, cx + PANEL_W / 2, Math.max(28, height - 6), C_PANEL);
+        // 面板底让到页脚声明条上面（条子在面板外，视觉上是「页脚」而不是面板里的一行）
+        ctx.fill(cx - PANEL_W / 2, 6, cx + PANEL_W / 2, Math.max(28, disclaimerY()), C_PANEL);
         super.render(ctx, mouseX, mouseY, delta);
 
         ctx.drawCenteredTextWithShadow(textRenderer, title, cx, 12, C_WHITE);
@@ -310,7 +347,11 @@ public class SettingsScreen extends Screen {
 
         Session session = PhiMCClient.session();
         Profile profile = session == null ? null : session.profile();
-        if (profile == null) return;
+        if (profile == null) {
+            // 没存档也要留着页脚声明（这个界面本来就只有一行「返回」）
+            drawDisclaimer(ctx);
+            return;
+        }
 
         int labelX = cx - PANEL_W / 2 + 12;
 
@@ -361,8 +402,32 @@ public class SettingsScreen extends Screen {
                 labelX, rowY(6) + 5, C_GRAY, false);
 
         if (!notice.isEmpty()) {
-            ctx.drawText(textRenderer, shortText(notice, 40), labelX, height - FOOTER_H - 14, C_ACCENT, false);
+            ctx.drawText(textRenderer, shortText(notice, 40), labelX, noticeY(), C_ACCENT, false);
         }
+
+        // ---- 页脚：「非官方同人项目」声明（比选曲界面小一档字号，两个界面文案同一条 lang key） ----
+        drawDisclaimer(ctx);
+    }
+
+    /**
+     * 页脚声明：底部一条极淡半透明底条 + 居中灰色小字（{@link #DISCLAIM_SCALE} 缩放）。
+     *
+     * <p>文案和选曲界面（{@link SongSelectScreen}）共用 {@code text.phimc.disclaimer}；
+     * 取 {@code getString()} 是为了量宽度做居中，太窄时按内容区宽度等比缩小，永远不会被裁掉。
+     */
+    private void drawDisclaimer(DrawContext ctx) {
+        ctx.fill(0, disclaimerY(), width, height, C_DISCLAIM_BG);
+        String text = Text.translatable(KEY_DISCLAIMER).getString();
+        float textH = 9 * DISCLAIM_SCALE;
+        int y = disclaimerY() + Math.round((DISCLAIM_H - textH) / 2f);
+        int tw = Math.max(1, textRenderer.getWidth(text));
+        float fitScale = Math.min(DISCLAIM_SCALE, (width - 2 * DISCLAIM_PAD) / (float) tw);
+        RenderCompat.Transform ms = RenderCompat.transform(ctx);
+        ms.push();
+        ms.translate((width - tw * fitScale) / 2f, y);
+        ms.scale(fitScale, fitScale);
+        ctx.drawText(textRenderer, text, 0, 0, C_DISCLAIM, false);
+        ms.pop();
     }
 
     @Override

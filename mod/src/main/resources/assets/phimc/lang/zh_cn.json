@@ -7,7 +7,9 @@
   "item.phimc.phira": "Phira",
   "itemGroup.phimc": "PhiMC",
   "key.phimc.select": "打开选曲",
+  "key.phimc.player": "打开曲库（打歌版）",
   "key.category.phimc.main": "PhiMC",
+  "key.category.phimcplayer.main": "PhiMC Player",
   "category.phimc": "PhiMC",
   "tooltip.phimc.blank_chip.hint": "在平板曲库里对已解锁谱面点「拷芯片」",
   "tooltip.phimc.chart_chip.empty": "未载入谱面",
@@ -16,5 +18,6 @@
   "message.phimc.chip.unlocked": "已解锁 %s",
   "message.phimc.chip.already": "已解锁（此前就拥有）：%s",
   "message.phimc.chip.empty": "这张芯片还没有载入谱面",
-  "message.phimc.chip.no_profile": "存档还没准备好，稍后再试"
+  "message.phimc.chip.no_profile": "存档还没准备好，稍后再试",
+  "text.phimc.disclaimer": "非官方同人项目 · 与鸽游（Pigeon Games）及《Phigros》官方无授权、合作或运营关系"
 }
